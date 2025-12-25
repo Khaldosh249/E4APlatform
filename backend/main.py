@@ -38,7 +38,6 @@ app = FastAPI(
     description="Accessible learning platform for all students including visually impaired users",
     version="1.0.0",
     lifespan=lifespan,
-    redirect_slashes=False  # Disable automatic trailing slash redirects
 )
 
 ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://localhost:3000").split(",")
