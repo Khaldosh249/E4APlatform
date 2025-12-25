@@ -34,7 +34,7 @@ class QuizBase(BaseModel):
     time_limit: Optional[int] = None
     max_score: int = 100
     passing_score: int = 60
-    max_attempts: int = 1
+    max_attempts: int = 0
     shuffle_questions: bool = False
     show_results_immediately: bool = True
 
