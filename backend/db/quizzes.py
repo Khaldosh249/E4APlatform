@@ -115,6 +115,7 @@ class QuizAttempt(Base):
     max_score = Column(Integer, nullable=False)
     percentage = Column(Float, default=0.0)
     passed = Column(Boolean, default=False)
+    answers_text = Column(Text, nullable=True)  # ? Answers in text
     
     # * Timing
     time_started = Column(DateTime, default=datetime.now)
@@ -170,3 +171,6 @@ class Answer(Base):
 def get_quizzes_by_course(db, course_id: int):
     return db.query(Quiz).filter(Quiz.course_id == course_id).all()
 
+
+def get_quiz(db, quiz_id: int):
+    return db.query(Quiz).filter(Quiz.id == quiz_id).first()
