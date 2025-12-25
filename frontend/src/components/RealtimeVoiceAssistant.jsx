@@ -327,7 +327,7 @@ const RealtimeVoiceAssistant = ({ isOpen, onClose }) => {
     try {
       sessionIdRef.current = generateSessionId();
       // Connect to backend WebSocket which bridges to OpenAI Realtime API
-      const wsUrl = `ws://api.e4a.khaldosh.dev/voice/realtime/${token}`;
+      const wsUrl = `wss://api.e4a.khaldosh.dev/voice/realtime/${token}`;
       
       wsRef.current = new WebSocket(wsUrl);
       
