@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Book, Award, TrendingUp } from 'lucide-react';
+import { Book, Award, TrendingUp, Mic } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import api from '../lib/api';
 import toast from 'react-hot-toast';
@@ -59,7 +59,7 @@ export default function StudentDashboard() {
         <h1 className="text-3xl font-bold text-gray-900 mb-8">Student Dashboard</h1>
 
         {/* Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
           <div className="card">
             <div className="flex items-center">
               <Book className="h-8 w-8 text-primary-600 mr-3" />
@@ -95,6 +95,19 @@ export default function StudentDashboard() {
               </div>
             </div>
           </div>
+
+          <Link 
+            to="/voice-assistant"
+            className="card hover:shadow-lg transition-shadow bg-gradient-to-r from-primary-500 to-primary-600 text-white"
+          >
+            <div className="flex items-center">
+              <Mic className="h-8 w-8 text-white mr-3" />
+              <div>
+                <p className="text-sm text-primary-100">Voice Assistant</p>
+                <p className="text-lg font-bold">Start Voice Mode</p>
+              </div>
+            </div>
+          </Link>
         </div>
 
         {/* My Courses */}

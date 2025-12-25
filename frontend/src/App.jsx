@@ -14,6 +14,7 @@ import QuizQuestionManagement from './pages/QuizQuestionManagement';
 import GradingInterface from './pages/GradingInterface';
 import ProgressTracking from './pages/ProgressTracking';
 import AccessibilitySettings from './pages/AccessibilitySettings';
+import VoiceAssistantPage from './pages/VoiceAssistantPage';
 import ProtectedRoute from './components/ProtectedRoute';
 import VoiceAssistantButton from './components/VoiceAssistantButton';
 import useAccessibilityStore from './store/accessibilityStore';
@@ -116,6 +117,14 @@ function App() {
             element={
               <ProtectedRoute allowedRoles={['student']}>
                 <AccessibilitySettings />
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/voice-assistant" 
+            element={
+              <ProtectedRoute allowedRoles={['student']}>
+                <VoiceAssistantPage />
               </ProtectedRoute>
             } 
           />
