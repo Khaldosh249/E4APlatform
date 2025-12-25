@@ -83,3 +83,24 @@ def get_courses(db, skip: int = 0, limit: int = 100, published_only: bool = Fals
 def get_course(db, course_id: int):
     return db.query(Course).filter(Course.id == course_id).first()
 
+
+def get_courses_by_name(db, name_substr: str):
+    return db.query(Course).filter(Course.title.ilike(f"%{name_substr}%")).all()
+
+
+def get_enrollment(db, user_id: int, course_id: int):
+    return db.query(Enrollment).filter(
+        Enrollment.student_id == user_id,
+        Enrollment.course_id == course_id
+    ).first()
+
+
+def create_enrollment(db, user_id: int, course_id: int):
+    enrollment = Enrollment(
+        student_id=user_id,
+        course_id=course_id
+    )
+    db.add(enrollment)
+    db.commit()
+    db.refresh(enrollment)
+    return enrollment
