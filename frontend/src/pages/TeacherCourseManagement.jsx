@@ -141,7 +141,7 @@ export default function TeacherCourseManagement() {
         await api.put(`/assignments/${editingItem.id}`, payload);
         toast.success('Assignment updated!');
       } else {
-        await api.post(`/assignments`, {
+        await api.post(`/assignments/`, {
           ...payload,
           course_id: courseId
         });
@@ -186,7 +186,7 @@ export default function TeacherCourseManagement() {
         await api.put(`/quizzes/${editingItem.id}`, quizForm);
         toast.success('Quiz updated!');
       } else {
-        await api.post(`/quizzes`, 
+        await api.post(`/quizzes/`, 
             {
                 ...quizForm,
                 course_id: courseId
