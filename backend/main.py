@@ -13,6 +13,7 @@ from api.lessons import router as lessons_router
 from api.assignments import router as assignments_router
 from api.quizzes import router as quizzes_router
 from api.feedback import router as feedback_router
+from api.voice import router as voice_router
 
 from db.models import create_tables
 
@@ -61,7 +62,7 @@ app.include_router(lessons_router)
 app.include_router(assignments_router)
 app.include_router(quizzes_router)
 app.include_router(feedback_router)
-
+app.include_router(voice_router)
 
 @app.get("/")
 def root():
