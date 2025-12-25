@@ -15,8 +15,8 @@
 - Khalid tasks:
     - [x] Init project repository.
     - [x] Set up development environment
-    - [ ] Set up server and cloud hosting.
-    - [ ] Set up GitHub Actions for CI/CD.
+    - [x] Set up server and cloud hosting.
+    - [x] Set up GitHub Actions for CI/CD.
 - Khalid & Sarah:
     - [x] Define project structure.
     - [x] Database schema design.
