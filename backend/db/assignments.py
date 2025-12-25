@@ -102,3 +102,6 @@ def get_assignments_by_course(db, course_id: int):
     return db.query(Assignment).filter(Assignment.course_id == course_id).all()
 
 
+def get_assignment(db, assignment_id: int):
+    return db.query(Assignment).filter(Assignment.id == assignment_id).first()
+
