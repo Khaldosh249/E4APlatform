@@ -20,7 +20,10 @@
 - Khalid & Sarah:
     - [x] Define project structure.
     - [x] Database schema design.
-    - [ ] API development.
+    - [x] API development.
+- Sarah tasks:
+    - [ ] README.md file.
+    - [ ] QUICKSTART.md file.
 - Sarah & Mwafg:
     - [ ] Frontend Development and Enhancements.
     - [ ] UI/UX Design.
