@@ -1,3 +1,4 @@
+from typing import Optional
 from sqlalchemy import Column, Integer, String, Text, Boolean, DateTime, ForeignKey, Enum
 from sqlalchemy.orm import relationship
 from datetime import datetime
@@ -47,6 +48,12 @@ class Lesson(Base):
     course = relationship("Course", back_populates="lessons")
     lesson_audio = relationship("LessonAudio", back_populates="lesson", cascade="all, delete-orphan")
     progress = relationship("LessonProgress", back_populates="lesson", cascade="all, delete-orphan")
+    
+    @property
+    def duration_minutes(self) -> Optional[int]:
+        if self.duration:
+            return self.duration // 60
+        return None
     
     def __repr__(self):
         return f"<Lesson {self.title}>"
