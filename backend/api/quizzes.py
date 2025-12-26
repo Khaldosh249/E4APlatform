@@ -366,10 +366,16 @@ def submit_quiz(
     
     # Update attempt with results (None defaults to True for auto-grading)
     if quiz.is_auto_graded is not False:
+        # attempt.score = total_score
+        # attempt.percentage = (total_score / quiz.max_score * 100) if quiz.max_score > 0 else 0
+        # attempt.passed = attempt.percentage >= quiz.passing_score
+        # attempt.is_graded = True
         attempt.score = total_score
-        attempt.percentage = (total_score / quiz.max_score * 100) if quiz.max_score > 0 else 0
+        attempt.max_score = len(submission.answers)
+        attempt.percentage = (attempt.score / attempt.max_score * 100) if attempt.max_score > 0 else 0
         attempt.passed = attempt.percentage >= quiz.passing_score
         attempt.is_graded = True
+        
     else:
         # Manual grading - mark as submitted but not graded
         attempt.score = 0
