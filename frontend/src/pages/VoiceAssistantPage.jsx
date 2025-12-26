@@ -284,7 +284,7 @@ const VoiceAssistantPage = () => {
     else if (data.action === 'quiz_completed') {
       setDisplayContent({
         type: 'quiz_result',
-        score: data.score,
+        score: data.correct,  // Use correct count, not percentage
         total: data.total,
         passed: data.passed,
         answers: data.answers
