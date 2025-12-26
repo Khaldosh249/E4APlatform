@@ -54,6 +54,7 @@ const VoiceAssistantPage = () => {
   const isListeningRef = useRef(false);
   const audioPlaybackTimeRef = useRef(0);
   const mountedRef = useRef(true);
+  const activeAudioSourcesRef = useRef([]);
   
   // Scroll to bottom of messages
   useEffect(() => {
@@ -133,12 +134,46 @@ const VoiceAssistantPage = () => {
       source.connect(audioContext.destination);
       source.start(startTime);
       
+      // Track active sources for interruption
+      activeAudioSourcesRef.current.push(source);
+      source.onended = () => {
+        activeAudioSourcesRef.current = activeAudioSourcesRef.current.filter(s => s !== source);
+      };
+      
       audioPlaybackTimeRef.current = startTime + audioBuffer.duration;
       
     } catch (error) {
       console.error('Error playing audio:', error);
     }
   }, [initAudioContext]);
+  
+  // Interrupt/stop all audio playback (for voice interrupts)
+  const interruptAudio = useCallback(() => {
+    // Stop all active audio sources
+    activeAudioSourcesRef.current.forEach(source => {
+      try {
+        source.stop();
+      } catch (e) {
+        // Source may already be stopped
+      }
+    });
+    activeAudioSourcesRef.current = [];
+    
+    // Clear the audio queue
+    audioQueueRef.current = [];
+    
+    // Reset playback time
+    audioPlaybackTimeRef.current = 0;
+    
+    setIsSpeaking(false);
+    
+    // Send truncate message to OpenAI to stop generating audio
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        type: 'response.cancel'
+      }));
+    }
+  }, []);
   
   // Process audio queue
   const processAudioQueue = useCallback(async () => {
@@ -200,7 +235,8 @@ const VoiceAssistantPage = () => {
       }));
     }
     
-    else if (data.action === 'confirm_answer') {
+    else if (data.action === 'pending_answer') {
+      // When user selects an answer but hasn't confirmed yet
       setCurrentContext(prev => ({
         ...prev,
         pendingConfirmation: {
@@ -213,12 +249,26 @@ const VoiceAssistantPage = () => {
     }
     
     else if (data.action === 'answer_confirmed') {
+      // When user confirms their answer
       setCurrentContext(prev => ({
         ...prev,
         quizAnswers: {
           ...prev.quizAnswers,
           [data.questionIndex]: data.answer
         },
+        pendingConfirmation: null
+      }));
+      // Update display to reflect the confirmed answer
+      setDisplayContent(prev => prev?.type === 'quiz' ? {
+        ...prev,
+        // Keep the current index, it will be updated by show_question
+      } : prev);
+    }
+    
+    else if (data.action === 'answer_cancelled') {
+      // When user cancels their pending answer
+      setCurrentContext(prev => ({
+        ...prev,
         pendingConfirmation: null
       }));
     }
@@ -357,6 +407,8 @@ const VoiceAssistantPage = () => {
           break;
           
         case 'input_audio_buffer.speech_started':
+          // Interrupt AI audio when user starts speaking
+          interruptAudio();
           setCurrentTranscript('Listening...');
           break;
           
@@ -471,7 +523,7 @@ const VoiceAssistantPage = () => {
       console.error('Error parsing WebSocket message:', error);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [aiTranscript, handleContextUpdate, processAudioQueue, resetAudioPlayback]);
+  }, [aiTranscript, handleContextUpdate, processAudioQueue, resetAudioPlayback, interruptAudio]);
   
   // Connect to WebSocket
   const connect = useCallback(async () => {
@@ -481,9 +533,7 @@ const VoiceAssistantPage = () => {
     setConnectionError(null);
     
     try {
-      const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsHost = import.meta.env.VITE_WS_URL || `${wsProtocol}//api.e4a.khaldosh.dev`;
-      const wsUrl = `${wsHost}/voice/realtime/${token}`;
+      const wsUrl = `${import.meta.env.VITE_WS_URL}/voice/realtime/${token}`;
       
       wsRef.current = new WebSocket(wsUrl);
       
@@ -702,7 +752,9 @@ const VoiceAssistantPage = () => {
   const renderQuizDisplay = () => {
     if (!displayContent || displayContent.type !== 'quiz') return null;
     
-    const { quiz, questions, currentIndex } = displayContent;
+    const { quiz, questions } = displayContent;
+    // Use currentContext.currentQuestionIndex as the source of truth
+    const currentIndex = currentContext.currentQuestionIndex;
     const question = questions[currentIndex];
     const answer = currentContext.quizAnswers[currentIndex];
     const pending = currentContext.pendingConfirmation;
