@@ -1063,9 +1063,10 @@ async def execute_function(
             student_id=user_id,
             quiz_id=quiz_id,
             score=score,
+            max_score=score,
             passed=passed,
             answers_text=json.dumps(answers),
-            completed_at=datetime.now()
+            time_submitted=datetime.now()
         )
         db.add(attempt)
         db.commit()
