@@ -272,11 +272,11 @@ def start_quiz(
         QuizAttempt.student_id == current_user.id
     ).count()
     
-    if quiz.max_attempts > 0 and previous_attempts >= quiz.max_attempts:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Maximum attempts ({quiz.max_attempts}) reached"
-        )
+    # if quiz.max_attempts > 0 and previous_attempts >= quiz.max_attempts:
+    #     raise HTTPException(
+    #         status_code=status.HTTP_400_BAD_REQUEST,
+    #         detail=f"Maximum attempts ({quiz.max_attempts}) reached"
+    #     )
     
     # Create new attempt
     attempt = QuizAttempt(
