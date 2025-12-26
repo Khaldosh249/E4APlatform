@@ -120,7 +120,7 @@ class LessonProgress(Base):
 
 
 def get_lessons_by_course(db, course_id: int):
-    return db.query(Lesson).filter(Lesson.course_id == course_id).order_by(Lesson.order_index).all()
+    return db.query(Lesson).filter(Lesson.course_id == course_id, Lesson.is_published == True).order_by(Lesson.order_index).all()
 
 def get_lesson(db, lesson_id: int):
     return db.query(Lesson).filter(Lesson.id == lesson_id).first()

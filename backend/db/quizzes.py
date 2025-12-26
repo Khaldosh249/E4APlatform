@@ -43,6 +43,7 @@ class Quiz(Base):
     
     # * Status
     is_published = Column(Boolean, default=False)
+    is_auto_graded = Column(Boolean, default=True)  # False for manual grading by teacher
     
     # * Timestamps
     created_at = Column(DateTime, default=datetime.now)
@@ -169,7 +170,7 @@ class Answer(Base):
 
 
 def get_quizzes_by_course(db, course_id: int):
-    return db.query(Quiz).filter(Quiz.course_id == course_id).all()
+    return db.query(Quiz).filter(Quiz.course_id == course_id, Quiz.is_published == True).all()
 
 
 def get_quiz(db, quiz_id: int):
