@@ -1,8 +1,9 @@
 import { Link, useNavigate } from 'react-router-dom';
-import { Menu, LogOut, User, Settings, Volume2, BookOpen, BarChart3, GraduationCap, Home } from 'lucide-react';
+import { Menu, LogOut, User, Settings, BookOpen, BarChart3, GraduationCap, Home } from 'lucide-react';
 import useAuthStore from '../store/authStore';
 import useAccessibilityStore from '../store/accessibilityStore';
 import { useState } from 'react';
+import logo from '../logo.png';
 
 export default function Navbar() {
   const { user, logout } = useAuthStore();
@@ -33,7 +34,7 @@ export default function Navbar() {
         <div className="flex justify-between h-16">
           <div className="flex items-center space-x-6">
             <Link to={getDashboardLink()} className="flex items-center space-x-2">
-              <Volume2 className="h-8 w-8 text-primary-600" />
+              <img src={logo} alt="E4A Logo" className="h-8 w-8" />
               <span className="text-xl font-bold">E4A Platform</span>
             </Link>
             

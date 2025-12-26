@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Eye, EyeOff, Volume2 } from 'lucide-react';
+import { Eye, EyeOff } from 'lucide-react';
 import useAuthStore from '../store/authStore';
 import toast from 'react-hot-toast';
+import logo from '../logo.png';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -42,7 +43,7 @@ export default function Login() {
       <div className="max-w-md w-full space-y-8 bg-white rounded-xl shadow-2xl p-8">
         <div>
           <div className="flex justify-center">
-            <Volume2 className="h-12 w-12 text-primary-600" />
+            <img src={logo} alt="E4A Logo" className="h-16 w-16" />
           </div>
           <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
             E4A Learning Platform

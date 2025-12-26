@@ -44,6 +44,14 @@ const VoiceAssistantPage = () => {
   // Display state for quiz/lesson content
   const [displayContent, setDisplayContent] = useState(null);
   
+  // Lesson audio state - for playing TTS audio and pausing AI
+  const [lessonAudioPlaying, setLessonAudioPlaying] = useState(false);
+  const [aiPaused, setAiPaused] = useState(false);
+  const [pendingLessonAudio, setPendingLessonAudio] = useState(null); // Stores audio URL waiting to be played
+  const [readyToPlayLessonAudio, setReadyToPlayLessonAudio] = useState(false); // True when AI finished and user can press Space
+  const lessonAudioRef = useRef(null);
+  const pendingLessonAudioRef = useRef(null); // Ref to track pending audio in message handler
+  
   // Refs
   const wsRef = useRef(null);
   const audioContextRef = useRef(null);
@@ -298,6 +306,28 @@ const VoiceAssistantPage = () => {
         type: 'lesson',
         lesson: data.lesson
       });
+      
+      // If lesson has audio URL, store it and wait for AI to finish speaking
+      // Then user will press Space to start the audio
+      if (data.has_audio && data.lesson?.audio_url) {
+        // Store the audio URL - will play after AI finishes and user presses Space
+        setPendingLessonAudio(data.lesson.audio_url);
+        pendingLessonAudioRef.current = data.lesson.audio_url; // Also update ref for message handler
+        
+        // Stop any current listening using ref
+        if (isListeningRef.current) {
+          isListeningRef.current = false;
+          if (processorRef.current) {
+            processorRef.current.disconnect();
+            processorRef.current = null;
+          }
+          if (mediaStreamRef.current) {
+            mediaStreamRef.current.getTracks().forEach(track => track.stop());
+            mediaStreamRef.current = null;
+          }
+          setIsListening(false);
+        }
+      }
     }
     
     else if (data.action === 'start_assignment') {
@@ -387,7 +417,8 @@ const VoiceAssistantPage = () => {
         mode: 'idle'
       }));
     }
-  }, [navigate]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [navigate, addMessage]);
   
   // Handle WebSocket messages
   const handleMessage = useCallback((event) => {
@@ -499,6 +530,13 @@ const VoiceAssistantPage = () => {
             } else if (errorDetails?.message) {
               addMessage('error', errorDetails.message);
             }
+          }
+          
+          // Check if there's pending lesson audio - AI has finished speaking
+          if (pendingLessonAudioRef.current) {
+            setReadyToPlayLessonAudio(true);
+            setAiPaused(true);
+            addMessage('system', '🎧 Press Space to start the lesson audio.');
           }
           break;
           
@@ -674,8 +712,90 @@ const VoiceAssistantPage = () => {
     }
   }, []);
   
+  // Stop lesson audio playback
+  const stopLessonAudio = useCallback(() => {
+    if (lessonAudioRef.current) {
+      lessonAudioRef.current.pause();
+      lessonAudioRef.current.currentTime = 0;
+      lessonAudioRef.current = null;
+    }
+    setLessonAudioPlaying(false);
+  }, []);
+  
+  // Play the pending lesson audio
+  const playPendingLessonAudio = useCallback(() => {
+    if (!pendingLessonAudio) return;
+    
+    setReadyToPlayLessonAudio(false);
+    setLessonAudioPlaying(true);
+    addMessage('system', '🎧 Playing lesson audio...');
+    
+    const audio = new Audio(pendingLessonAudio);
+    lessonAudioRef.current = audio;
+    
+    audio.onended = () => {
+      setLessonAudioPlaying(false);
+      setAiPaused(false);
+      lessonAudioRef.current = null;
+      setPendingLessonAudio(null);
+      pendingLessonAudioRef.current = null;
+      addMessage('system', '✅ Lesson audio finished. Press Space to resume voice interaction.');
+    };
+    
+    audio.onerror = (e) => {
+      console.error('Error playing lesson audio:', e);
+      setLessonAudioPlaying(false);
+      setAiPaused(false);
+      lessonAudioRef.current = null;
+      setPendingLessonAudio(null);
+      pendingLessonAudioRef.current = null;
+      addMessage('error', 'Failed to play lesson audio.');
+    };
+    
+    audio.play().catch(e => {
+      console.error('Failed to play audio:', e);
+      setLessonAudioPlaying(false);
+      setAiPaused(false);
+      lessonAudioRef.current = null;
+      setPendingLessonAudio(null);
+      pendingLessonAudioRef.current = null;
+    });
+  }, [pendingLessonAudio, addMessage]);
+  
+  // Resume AI interaction after lesson audio
+  const resumeAI = useCallback(() => {
+    stopLessonAudio();
+    setAiPaused(false);
+    setPendingLessonAudio(null);
+    pendingLessonAudioRef.current = null;
+    setReadyToPlayLessonAudio(false);
+    addMessage('system', '🎤 Voice assistant resumed. You can speak now.');
+  }, [stopLessonAudio, addMessage]);
+  
   // Toggle listening
   const toggleListening = useCallback(async () => {
+    // If ready to play lesson audio (AI finished speaking, waiting for Space), play it
+    if (readyToPlayLessonAudio && pendingLessonAudio) {
+      playPendingLessonAudio();
+      return;
+    }
+    
+    // If AI is paused (during or after lesson audio), resume it first
+    if (aiPaused) {
+      resumeAI();
+      // Then start listening
+      if (!isConnected) {
+        await connect();
+      }
+      await startAudioCapture();
+      return;
+    }
+    
+    // If lesson audio is playing, stop it
+    if (lessonAudioPlaying) {
+      stopLessonAudio();
+    }
+    
     if (isListening) {
       stopAudioCapture();
     } else {
@@ -684,7 +804,7 @@ const VoiceAssistantPage = () => {
       }
       await startAudioCapture();
     }
-  }, [isListening, isConnected, connect, startAudioCapture, stopAudioCapture]);
+  }, [isListening, isConnected, connect, startAudioCapture, stopAudioCapture, aiPaused, lessonAudioPlaying, resumeAI, stopLessonAudio, readyToPlayLessonAudio, pendingLessonAudio, playPendingLessonAudio]);
   
   // Auto-connect on mount and auto-start for visually impaired users
   useEffect(() => {
@@ -1288,15 +1408,21 @@ const VoiceAssistantPage = () => {
             
             <div className="text-center">
               <p className={`text-lg font-medium ${
+                lessonAudioPlaying ? 'text-blue-600' :
+                readyToPlayLessonAudio ? 'text-green-600' :
+                aiPaused ? 'text-purple-600' :
                 rateLimitWait > 0 ? 'text-orange-600' : 
                 isListening ? 'text-red-600' : isProcessing ? 'text-yellow-600' : isSpeaking ? 'text-green-600' : 'text-gray-600 dark:text-gray-400'
               }`}>
                 {isConnecting && 'Connecting...'}
-                {rateLimitWait > 0 && `⏳ Rate limited - wait ${rateLimitWait}s`}
-                {rateLimitWait === 0 && isConnected && !isListening && !isProcessing && !isSpeaking && 'Press Space or click to speak'}
-                {rateLimitWait === 0 && isListening && '🎤 Listening...'}
-                {rateLimitWait === 0 && isProcessing && '⏳ Processing...'}
-                {rateLimitWait === 0 && isSpeaking && '🔊 Speaking...'}
+                {lessonAudioPlaying && '🎧 Playing lesson audio... Press Space to stop'}
+                {!lessonAudioPlaying && readyToPlayLessonAudio && '🎧 Press Space to start the lesson audio'}
+                {!lessonAudioPlaying && !readyToPlayLessonAudio && aiPaused && '⏸️ AI paused. Press Space to resume'}
+                {!lessonAudioPlaying && !aiPaused && !readyToPlayLessonAudio && rateLimitWait > 0 && `⏳ Rate limited - wait ${rateLimitWait}s`}
+                {!lessonAudioPlaying && !aiPaused && !readyToPlayLessonAudio && rateLimitWait === 0 && isConnected && !isListening && !isProcessing && !isSpeaking && 'Press Space or click to speak'}
+                {!lessonAudioPlaying && !aiPaused && !readyToPlayLessonAudio && rateLimitWait === 0 && isListening && '🎤 Listening...'}
+                {!lessonAudioPlaying && !aiPaused && !readyToPlayLessonAudio && rateLimitWait === 0 && isProcessing && '⏳ Processing...'}
+                {!lessonAudioPlaying && !aiPaused && !readyToPlayLessonAudio && rateLimitWait === 0 && isSpeaking && '🔊 Speaking...'}
               </p>
               
               <p className="text-sm text-gray-500 mt-2">

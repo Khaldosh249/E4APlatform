@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Eye, EyeOff, Volume2 } from 'lucide-react';
+import { Eye, EyeOff } from 'lucide-react';
 import useAuthStore from '../store/authStore';
 import toast from 'react-hot-toast';
+import logo from '../logo.png';
 
 export default function Register() {
   const [formData, setFormData] = useState({
@@ -45,7 +46,7 @@ export default function Register() {
       <div className="max-w-md w-full space-y-8 bg-white rounded-xl shadow-2xl p-8">
         <div>
           <div className="flex justify-center">
-            <Volume2 className="h-12 w-12 text-primary-600" />
+            <img src={logo} alt="E4A Logo" className="h-16 w-16" />
           </div>
           <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
             Create your account
@@ -116,21 +117,8 @@ export default function Register() {
             </div>
           </div>
 
-          <div>
-            <label htmlFor="role" className="block text-sm font-medium text-gray-700">
-              Role
-            </label>
-            <select
-              id="role"
-              name="role"
-              value={formData.role}
-              onChange={handleChange}
-              className="input mt-1"
-            >
-              <option value="student">Student</option>
-              <option value="teacher">Teacher</option>
-            </select>
-          </div>
+          {/* Role is hidden since only students can register - teachers/admins are created by admins */}
+          <input type="hidden" name="role" value="student" />
 
           <div className="flex items-center">
             <input
