@@ -13,7 +13,14 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 def register(user_data: UserCreate, db: Session = Depends(get_db)):
-    """Register a new user"""
+    """Register a new student user. Teachers and Admins can only be created by Admins."""
+    # Only allow student registration through public endpoint
+    if user_data.role != UserRole.STUDENT:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only student registration is allowed. Teachers and admins must be created by an administrator."
+        )
+    
     # Check if email already exists
     existing_user = db.query(User).filter(User.email == user_data.email).first()
     if existing_user:
@@ -22,12 +29,12 @@ def register(user_data: UserCreate, db: Session = Depends(get_db)):
             detail="Email already registered"
         )
     
-    # Create new user
+    # Create new student user
     new_user = User(
         email=user_data.email,
         password_hash=hash_password(user_data.password),
         full_name=user_data.full_name,
-        role=user_data.role,
+        role=UserRole.STUDENT,  # Force student role
         is_blind=user_data.is_blind,
         voice_speed=user_data.voice_speed,
         preferred_language=user_data.preferred_language
