@@ -15,6 +15,7 @@ from db.session import get_db
 from db import courses, lessons, users, quizzes, assignments
 from db.users import User
 from db.models import QuizAttempt, Submission, LessonProgress
+from db.quizzes import Answer
 from db.lessons import LessonAudio
 from core.security import SECRET_KEY, ALGORITHM
 
@@ -197,7 +198,7 @@ VOICE_TOOLS = [
     {
         "type": "function",
         "name": "answer_question",
-        "description": "Record an answer for the current quiz question (requires confirmation)",
+        "description": "Record a pending answer for the current quiz question. This sets a PENDING answer that must be confirmed by calling confirm_answer. After calling this, ask the user to confirm with 'yes' or 'confirm'.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -209,11 +210,11 @@ VOICE_TOOLS = [
     {
         "type": "function",
         "name": "confirm_answer",
-        "description": "Confirm or cancel the pending quiz answer",
+        "description": "MUST be called to confirm or cancel a pending quiz answer. Call with confirmed=true when user says 'yes', 'confirm', 'correct'. Call with confirmed=false when user says 'no', 'cancel', 'change'. This function saves the answer and moves to the next question.",
         "parameters": {
             "type": "object",
             "properties": {
-                "confirmed": {"type": "boolean", "description": "True to confirm, False to cancel"}
+                "confirmed": {"type": "boolean", "description": "True to confirm and save the answer, False to cancel and let user choose again"}
             },
             "required": ["confirmed"]
         }
@@ -383,9 +384,13 @@ SYSTEM_INSTRUCTIONS = """You are a helpful voice assistant for the E4A Learning 
 ### Quiz Interaction Flow:
 1. When starting a quiz, read the first question automatically
 2. For each question, read: question text, then options (A, B, C, D)
-3. When student answers, ALWAYS ask for confirmation: "You selected [answer]. Say 'yes' or 'confirm' to lock in this answer, or 'no' to change it."
-4. Only after confirmation, move to the next question
-5. Before submitting, summarize: "You answered X out of Y questions. Say 'submit' to finish the quiz."
+3. When student says their answer (A, B, C, D), call answer_question function
+4. The answer_question function will set a pending answer - the function response will tell you to ask for confirmation
+5. When student says "yes", "confirm", "correct", call confirm_answer with confirmed=true
+6. When student says "no", "cancel", "change", call confirm_answer with confirmed=false
+7. IMPORTANT: You MUST call the confirm_answer function when the student confirms - do not just say "confirmed" without calling the function!
+8. Before submitting, summarize: "You answered X out of Y questions. Say 'submit' to finish the quiz."
+9. When student wants to submit, call submit_quiz with confirm=true
 
 ### Assignment Interaction Flow:
 1. Read the assignment description first
@@ -847,16 +852,21 @@ async def execute_function(
         if not questions:
             return {"success": False, "message": "This quiz has no questions."}
         
-        # Initialize quiz session
+        # Initialize quiz session - include correct_answer for grading
         quiz_questions = [
             {
                 "id": q.id,
                 "question_text": q.question_text,
                 "options": parse_options(q.options),
                 "question_type": q.question_type,
+                "correct_answer": q.correct_answer,  # Store for auto-grading comparison
             }
             for q in questions
         ]
+        
+        print(f"[DEBUG] Starting quiz {quiz_id} with {len(quiz_questions)} questions")
+        for i, q in enumerate(quiz_questions):
+            print(f"[DEBUG]   Q{i}: {q['question_text'][:50]}... options={q['options']}, correct={q['correct_answer']}")
         
         session_manager.update_session(
             user_id,
@@ -911,6 +921,7 @@ async def execute_function(
             return {"success": False, "message": "No quiz in progress."}
         
         answer = arguments.get("answer", "").upper().strip()
+        print(f"[DEBUG] answer_question called with raw answer: '{arguments.get('answer')}', processed: '{answer}'")
         
         # Parse answer
         answer_index = None
@@ -922,6 +933,8 @@ async def execute_function(
             answer_index = 2
         elif answer in ["D", "4", "OPTION D", "ANSWER D", "FOURTH"]:
             answer_index = 3
+        
+        print(f"[DEBUG] Parsed answer_index: {answer_index}")
         
         if answer_index is None:
             return {"success": False, "message": "I didn't understand that answer. Please say A, B, C, or D."}
@@ -962,10 +975,15 @@ async def execute_function(
         if confirmed:
             idx = session.get("current_question_index", 0)
             questions = session.get("quiz_questions", [])
-            answers = session.get("quiz_answers", {})
+            answers = dict(session.get("quiz_answers", {}))  # Make a copy to ensure update works
             
             answers[idx] = pending
+            print(f"[DEBUG] Saving answer for question {idx}: option {pending}, total answers: {answers}")
             session_manager.update_session(user_id, quiz_answers=answers, pending_answer=None)
+            
+            # Verify it was saved
+            updated_session = session_manager.get_session(user_id)
+            print(f"[DEBUG] After update, quiz_answers: {updated_session.get('quiz_answers')}")
             
             await send_context_update({
                 "action": "answer_confirmed",
@@ -1056,6 +1074,8 @@ async def execute_function(
         answered = len(answers)
         total = len(questions)
         
+        print(f"[DEBUG] submit_quiz called - confirm={confirm}, answers={answers}, total_questions={total}")
+        
         if not confirm:
             unanswered = total - answered
             return {
@@ -1065,39 +1085,124 @@ async def execute_function(
                           "Say 'yes, submit quiz' to confirm submission."
             }
         
-        # Calculate score
+        # Get quiz info
         quiz_id = session.get("current_quiz_id")
         quiz = quizzes.get_quiz(db, quiz_id)
         
-        correct = 0
-        for idx, q in enumerate(questions):
-            if idx in answers:
-                if answers[idx] == q.get("correct_answer"):
-                    correct += 1
+        # Check if quiz is auto-graded or manual (None/True = auto-graded, False = manual)
+        is_auto_graded = getattr(quiz, 'is_auto_graded', True)
+        if is_auto_graded is None:
+            is_auto_graded = True  # Default to auto-grading
         
-        score = round((correct / total) * 100) if total > 0 else 0
-        passed = score >= (quiz.passing_score or 70)
-        
-        # Save attempt
-        attempt = QuizAttempt(
-            student_id=user_id,
-            quiz_id=quiz_id,
-            score=score,
-            max_score=score,
-            passed=passed,
-            answers_text=json.dumps(answers),
-            time_submitted=datetime.now()
-        )
-        db.add(attempt)
-        db.commit()
-        
-        await send_context_update({
-            "action": "quiz_completed",
-            "score": score,
-            "total": total,
-            "correct": correct,
-            "passed": passed
-        })
+        if is_auto_graded:
+            # Auto-grade: Calculate score
+            correct = 0
+            for idx, q in enumerate(questions):
+                if idx in answers:
+                    # Get the selected option text (answers[idx] is the option index)
+                    selected_option_index = answers[idx]
+                    options = q.get("options", [])
+                    if selected_option_index < len(options):
+                        selected_answer_text = options[selected_option_index]
+                        # Compare with correct_answer (which is the option text)
+                        if selected_answer_text == q.get("correct_answer"):
+                            correct += 1
+            
+            score = round((correct / total) * 100) if total > 0 else 0
+            passed = score >= (quiz.passing_score or 70)
+            
+            # Save attempt with score
+            attempt = QuizAttempt(
+                student_id=user_id,
+                quiz_id=quiz_id,
+                score=score,
+                max_score=quiz.max_score,
+                percentage=score,  # score is already a percentage
+                passed=passed,
+                is_graded=True,
+                is_completed=True,
+                answers_text=json.dumps(answers),
+                time_submitted=datetime.now()
+            )
+            db.add(attempt)
+            db.flush()  # Get the attempt ID
+            
+            # Save individual Answer records for each question
+            for idx, q in enumerate(questions):
+                selected_option_index = answers.get(idx)
+                options = q.get("options", [])
+                answer_text = options[selected_option_index] if selected_option_index is not None and selected_option_index < len(options) else None
+                is_correct = answer_text == q.get("correct_answer") if answer_text else False
+                question_points = 1  # Default points per question
+                
+                answer_record = Answer(
+                    attempt_id=attempt.id,
+                    question_id=q["id"],
+                    answer_text=answer_text,
+                    is_correct=is_correct,
+                    points_earned=question_points if is_correct else 0,
+                    answered_at=datetime.now()
+                )
+                db.add(answer_record)
+            
+            db.commit()
+            
+            await send_context_update({
+                "action": "quiz_completed",
+                "score": score,
+                "total": total,
+                "correct": correct,
+                "passed": passed,
+                "is_auto_graded": True
+            })
+            
+            result_message = "Congratulations! You passed!" if passed else "You didn't pass this time, but you can try again."
+            message = f"Quiz submitted! You got {correct} out of {total} correct, which is {score}%. {result_message}"
+        else:
+            # Manual grading: Just submit without score
+            attempt = QuizAttempt(
+                student_id=user_id,
+                quiz_id=quiz_id,
+                score=0,
+                max_score=quiz.max_score,
+                passed=False,
+                is_graded=False,
+                is_completed=True,
+                answers_text=json.dumps(answers),
+                time_submitted=datetime.now()
+            )
+            db.add(attempt)
+            db.flush()  # Get the attempt ID
+            
+            # Save individual Answer records for each question (without grading)
+            for idx, q in enumerate(questions):
+                selected_option_index = answers.get(idx)
+                options = q.get("options", [])
+                answer_text = options[selected_option_index] if selected_option_index is not None and selected_option_index < len(options) else None
+                
+                answer_record = Answer(
+                    attempt_id=attempt.id,
+                    question_id=q["id"],
+                    answer_text=answer_text,
+                    is_correct=None,  # Not graded yet
+                    points_earned=0,
+                    answered_at=datetime.now()
+                )
+                db.add(answer_record)
+            
+            db.commit()
+            
+            await send_context_update({
+                "action": "quiz_completed",
+                "score": 0,
+                "total": total,
+                "correct": 0,
+                "passed": False,
+                "is_auto_graded": False,
+                "pending_grading": True
+            })
+            
+            message = f"Quiz submitted! You answered {answered} out of {total} questions. Your teacher will grade this quiz and you'll be notified when results are available."
         
         # Reset quiz state
         session_manager.update_session(
@@ -1109,13 +1214,10 @@ async def execute_function(
             pending_answer=None
         )
         
-        result_message = "Congratulations! You passed!" if passed else "You didn't pass this time, but you can try again."
-        
         return {
             "success": True,
-            "score": score,
-            "passed": passed,
-            "message": f"Quiz submitted! You got {correct} out of {total} correct, which is {score}%. {result_message}"
+            "is_auto_graded": is_auto_graded,
+            "message": message
         }
     
     elif function_name == "get_quiz_status":
@@ -1334,16 +1436,39 @@ async def execute_function(
             word_count = len(content.split())
             return {"success": False, "message": f"Your submission has {word_count} words. Say 'yes, submit' to confirm."}
         
-        # Create submission
+        # # Create submission
         assignment_id = session.get("current_assignment_id")
-        submission = Submission(
-            student_id=user_id,
-            assignment_id=assignment_id,
-            text_answer=content,
-            submitted_at=datetime.now()
-        )
-        db.add(submission)
+        # submission = Submission(
+        #     student_id=user_id,
+        #     assignment_id=assignment_id,
+        #     text_answer=content,
+        #     submitted_at=datetime.now()
+        # )
+        # db.add(submission)
+        # db.commit()
+        
+        check_existing = db.query(Submission).filter(
+            Submission.student_id == user_id,
+            Submission.assignment_id == assignment_id
+        ).first()
+        
+        if check_existing:
+            # Update existing submission
+            check_existing.text_answer = content
+            check_existing.submitted_at = datetime.now()
+            check_existing.status = 'submitted'
+        else:
+            # Create new submission
+            new_submission = Submission(
+                student_id=user_id,
+                assignment_id=assignment_id,
+                text_answer=content,
+                submitted_at=datetime.now(),
+                status='submitted'
+            )
+            db.add(new_submission)
         db.commit()
+        
         
         await send_context_update({
             "action": "assignment_submitted",
