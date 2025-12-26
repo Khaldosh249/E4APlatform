@@ -10,6 +10,7 @@ class LessonBase(BaseModel):
     content_text: Optional[str] = None
     content_type: ContentType = ContentType.TEXT
     order_index: int = 0
+    is_published: Optional[bool] = False
 
 
 class LessonCreate(LessonBase):
@@ -30,6 +31,7 @@ class LessonResponse(LessonBase):
     course_id: int
     file_url: Optional[str] = None
     audio_url: Optional[str] = None
+    tts_status: Optional[str] = "none"  # none, processing, ready, error
     duration: Optional[int] = None
     duration_minutes: Optional[int] = None
     is_published: bool

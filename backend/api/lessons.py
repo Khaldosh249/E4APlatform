@@ -1,7 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, BackgroundTasks
 from sqlalchemy.orm import Session
 from typing import List, Optional
-from db.session import get_db
+from db.session import get_db, SessionLocal
 from db.users import User, UserRole
 from db.courses import Course
 from db.lessons import Lesson, LessonAudio, LessonProgress
@@ -16,9 +16,71 @@ from datetime import datetime
 router = APIRouter(prefix="/lessons", tags=["Lessons"])
 
 
+def generate_tts_background(lesson_id: int, content_text: str, language: str = "en"):
+    """Background task to generate TTS audio for a lesson"""
+    db = SessionLocal()
+    try:
+        audio_url = generate_tts_audio(
+            content_text,
+            language=language,
+            filename=f"lesson_{lesson_id}.mp3"
+        )
+        
+        if audio_url:
+            # Check if audio record already exists
+            lesson_audio = db.query(LessonAudio).filter(
+                LessonAudio.lesson_id == lesson_id
+            ).first()
+            
+            if lesson_audio:
+                lesson_audio.audio_url = audio_url
+                lesson_audio.is_processed = True
+                lesson_audio.processing_error = None
+            else:
+                lesson_audio = LessonAudio(
+                    lesson_id=lesson_id,
+                    audio_url=audio_url,
+                    language=language,
+                    is_processed=True
+                )
+                db.add(lesson_audio)
+            
+            db.commit()
+            print(f"TTS audio generated successfully for lesson {lesson_id}")
+        else:
+            # Mark as failed
+            lesson_audio = db.query(LessonAudio).filter(
+                LessonAudio.lesson_id == lesson_id
+            ).first()
+            if lesson_audio:
+                lesson_audio.processing_error = "Failed to generate audio"
+                db.commit()
+    except Exception as e:
+        print(f"Error generating TTS for lesson {lesson_id}: {e}")
+        # Mark as failed
+        lesson_audio = db.query(LessonAudio).filter(
+            LessonAudio.lesson_id == lesson_id
+        ).first()
+        if lesson_audio:
+            lesson_audio.processing_error = str(e)
+            db.commit()
+    finally:
+        db.close()
+
+
 def lesson_to_response(lesson: Lesson, db: Session) -> dict:
     """Convert lesson model to response dict with audio_url"""
     lesson_audio = db.query(LessonAudio).filter(LessonAudio.lesson_id == lesson.id).first()
+    
+    # Determine TTS status
+    tts_status = "none"  # No TTS requested
+    if lesson_audio:
+        if lesson_audio.processing_error:
+            tts_status = "error"
+        elif lesson_audio.is_processed and lesson_audio.audio_url:
+            tts_status = "ready"
+        else:
+            tts_status = "processing"
     
     return {
         "id": lesson.id,
@@ -29,7 +91,8 @@ def lesson_to_response(lesson: Lesson, db: Session) -> dict:
         "content_type": lesson.content_type,
         "order_index": lesson.order_index,
         "file_url": lesson.file_url,
-        "audio_url": lesson_audio.audio_url if lesson_audio else None,
+        "audio_url": lesson_audio.audio_url if lesson_audio and lesson_audio.is_processed else None,
+        "tts_status": tts_status,
         "duration": lesson.duration,
         "duration_minutes": lesson.duration // 60 if lesson.duration else 10,
         "is_published": lesson.is_published,
@@ -84,13 +147,12 @@ def get_lesson(
         )
     
     return lesson_to_response(lesson, db)
-    
-    return lesson
 
 
 @router.post("/", response_model=LessonResponse, status_code=status.HTTP_201_CREATED)
 def create_lesson(
     lesson_data: LessonCreate,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_teacher_user),
     db: Session = Depends(get_db)
 ):
@@ -115,38 +177,42 @@ def create_lesson(
         description=lesson_data.description,
         content_text=lesson_data.content_text,
         content_type=lesson_data.content_type,
-        order_index=lesson_data.order_index
+        order_index=lesson_data.order_index,
+        is_published=lesson_data.is_published
     )
     
     db.add(new_lesson)
     db.commit()
     db.refresh(new_lesson)
     
-    # Generate TTS audio for text content
+    # Create a placeholder audio record and generate TTS in background
     if lesson_data.content_text:
-        audio_url = generate_tts_audio(
-            lesson_data.content_text,
+        # Create placeholder record to track processing status
+        lesson_audio = LessonAudio(
+            lesson_id=new_lesson.id,
+            audio_url="",  # Will be filled by background task
             language="en",
-            filename=f"lesson_{new_lesson.id}.mp3"
+            is_processed=False  # Mark as processing
         )
+        db.add(lesson_audio)
+        db.commit()
         
-        if audio_url:
-            lesson_audio = LessonAudio(
-                lesson_id=new_lesson.id,
-                audio_url=audio_url,
-                language="en",
-                is_processed=True
-            )
-            db.add(lesson_audio)
-            db.commit()
+        # Add background task for TTS generation
+        background_tasks.add_task(
+            generate_tts_background,
+            new_lesson.id,
+            lesson_data.content_text,
+            "en"
+        )
     
-    return new_lesson
+    return lesson_to_response(new_lesson, db)
 
 
 @router.put("/{lesson_id}", response_model=LessonResponse)
 def update_lesson(
     lesson_id: int,
     lesson_data: LessonUpdate,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_teacher_user),
     db: Session = Depends(get_db)
 ):
@@ -169,31 +235,32 @@ def update_lesson(
     # Update fields
     update_data = lesson_data.model_dump(exclude_unset=True)
     
-    # If content_text is updated, regenerate TTS
+    # If content_text is updated, regenerate TTS in background
     if "content_text" in update_data and update_data["content_text"]:
-        audio_url = generate_tts_audio(
-            update_data["content_text"],
-            language="en",
-            filename=f"lesson_{lesson_id}.mp3"
-        )
+        # Mark existing audio as processing
+        lesson_audio = db.query(LessonAudio).filter(
+            LessonAudio.lesson_id == lesson_id
+        ).first()
         
-        if audio_url:
-            # Update or create lesson audio
-            lesson_audio = db.query(LessonAudio).filter(
-                LessonAudio.lesson_id == lesson_id
-            ).first()
-            
-            if lesson_audio:
-                lesson_audio.audio_url = audio_url
-                lesson_audio.is_processed = True
-            else:
-                lesson_audio = LessonAudio(
-                    lesson_id=lesson_id,
-                    audio_url=audio_url,
-                    language="en",
-                    is_processed=True
-                )
-                db.add(lesson_audio)
+        if lesson_audio:
+            lesson_audio.is_processed = False
+            lesson_audio.processing_error = None
+        else:
+            lesson_audio = LessonAudio(
+                lesson_id=lesson_id,
+                audio_url="",
+                language="en",
+                is_processed=False
+            )
+            db.add(lesson_audio)
+        
+        # Add background task for TTS generation
+        background_tasks.add_task(
+            generate_tts_background,
+            lesson_id,
+            update_data["content_text"],
+            "en"
+        )
     
     for field, value in update_data.items():
         setattr(lesson, field, value)
@@ -201,7 +268,7 @@ def update_lesson(
     db.commit()
     db.refresh(lesson)
     
-    return lesson
+    return lesson_to_response(lesson, db)
 
 
 @router.delete("/{lesson_id}")

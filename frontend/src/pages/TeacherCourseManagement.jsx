@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { 
   ArrowLeft, Plus, Edit2, Trash2, Save, X, 
   BookOpen, FileText, ClipboardList, Users, 
-  Volume2, Eye, GripVertical
+  Volume2, Eye, GripVertical, Loader2
 } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import api from '../lib/api';
@@ -19,6 +19,7 @@ export default function TeacherCourseManagement() {
   const [enrolledStudents, setEnrolledStudents] = useState([]);
   const [activeTab, setActiveTab] = useState('lessons');
   const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
   
   // Modal states
   const [showLessonModal, setShowLessonModal] = useState(false);
@@ -54,11 +55,6 @@ export default function TeacherCourseManagement() {
     is_published: false
   });
 
-  useEffect(() => {
-    loadCourseData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [courseId]);
-
   const loadCourseData = async () => {
     try {
       const [courseRes, lessonsRes, assignmentsRes, quizzesRes, enrollmentsRes] = await Promise.all([
@@ -81,26 +77,48 @@ export default function TeacherCourseManagement() {
     }
   };
 
+  useEffect(() => {
+    loadCourseData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [courseId]);
+  
+  // Auto-refresh when there are lessons with TTS processing
+  useEffect(() => {
+    const hasProcessing = lessons.some(l => l.tts_status === 'processing');
+    if (hasProcessing) {
+      const interval = setInterval(() => {
+        // Silently refresh lessons only
+        api.get(`/lessons/course/${courseId}`).then(res => {
+          setLessons(res.data);
+        }).catch(() => {});
+      }, 5000); // Poll every 5 seconds
+      return () => clearInterval(interval);
+    }
+  }, [lessons, courseId]);
+
   // Lesson CRUD
   const handleLessonSubmit = async (e) => {
     e.preventDefault();
+    setSubmitting(true);
     try {
       if (editingItem) {
         await api.put(`/lessons/${editingItem.id}`, lessonForm);
-        toast.success('Lesson updated!');
+        toast.success('Lesson updated! TTS audio is being regenerated...');
       } else {
         await api.post(`/lessons/`, {
           ...lessonForm,
           order_index: lessons.length,
           course_id: courseId
         });
-        toast.success('Lesson created! TTS audio is being generated...');
+        toast.success('Lesson created! TTS audio is being generated in background...');
       }
       setShowLessonModal(false);
       resetLessonForm();
       loadCourseData();
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Failed to save lesson');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -320,10 +338,22 @@ export default function TeacherCourseManagement() {
                         <div className="flex items-center gap-3 text-sm text-gray-500">
                           <span>{lesson.content_type}</span>
                           <span>{lesson.duration_minutes} min</span>
-                          {lesson.audio_url && (
-                            <span className="flex items-center text-primary-600">
+                          {lesson.tts_status === 'processing' && (
+                            <span className="flex items-center text-yellow-600">
+                              <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                              Generating TTS...
+                            </span>
+                          )}
+                          {lesson.tts_status === 'ready' && lesson.audio_url && (
+                            <span className="flex items-center text-green-600">
                               <Volume2 className="h-4 w-4 mr-1" />
-                              TTS
+                              TTS Ready
+                            </span>
+                          )}
+                          {lesson.tts_status === 'error' && (
+                            <span className="flex items-center text-red-600">
+                              <X className="h-4 w-4 mr-1" />
+                              TTS Failed
                             </span>
                           )}
                         </div>
@@ -643,9 +673,6 @@ export default function TeacherCourseManagement() {
                       className="input w-full"
                     >
                       <option value="text">Text</option>
-                      <option value="video">Video</option>
-                      <option value="audio">Audio</option>
-                      <option value="pdf">PDF</option>
                     </select>
                   </div>
                   
@@ -682,12 +709,26 @@ export default function TeacherCourseManagement() {
                     type="button"
                     onClick={() => setShowLessonModal(false)}
                     className="btn btn-secondary"
+                    disabled={submitting}
                   >
                     Cancel
                   </button>
-                  <button type="submit" className="btn btn-primary flex items-center">
-                    <Save className="h-4 w-4 mr-2" />
-                    {editingItem ? 'Update' : 'Create'} Lesson
+                  <button 
+                    type="submit" 
+                    className="btn btn-primary flex items-center"
+                    disabled={submitting}
+                  >
+                    {submitting ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="h-4 w-4 mr-2" />
+                        {editingItem ? 'Update' : 'Create'} Lesson
+                      </>
+                    )}
                   </button>
                 </div>
               </form>
