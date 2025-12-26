@@ -16,10 +16,44 @@ from api.feedback import router as feedback_router
 from api.voice import router as voice_router
 
 from db.models import create_tables
+from db.session import SessionLocal
+from db.users import User, UserRole
+from core.security import hash_password
 
 # Create audio directory
 Path("media/audio").mkdir(parents=True, exist_ok=True)
 load_dotenv()
+
+
+def create_default_admin():
+    """Create default admin account if no admin exists"""
+    db = SessionLocal()
+    try:
+        # Check if any admin exists
+        admin_exists = db.query(User).filter(User.role == UserRole.ADMIN).first()
+        if not admin_exists:
+            # Create default admin
+            default_admin = User(
+                email=os.getenv("ADMIN_EMAIL", "admin@e4a.com"),
+                password_hash=hash_password(os.getenv("ADMIN_PASSWORD", "Admin@123")),
+                full_name="System Administrator",
+                role=UserRole.ADMIN,
+                is_active=True,
+                is_verified=True
+            )
+            db.add(default_admin)
+            db.commit()
+            print("✅ Default admin account created!")
+            print(f"   Email: {os.getenv('ADMIN_EMAIL', 'admin@e4a.com')}")
+            print(f"   Password: {os.getenv('ADMIN_PASSWORD', 'Admin@123')}")
+            print("   ⚠️  Please change the password after first login!")
+        else:
+            print("✅ Admin account already exists")
+    except Exception as e:
+        print(f"❌ Error creating admin account: {e}")
+        db.rollback()
+    finally:
+        db.close()
 
 
 @asynccontextmanager
@@ -28,6 +62,9 @@ async def lifespan(app: FastAPI):
     # Startup code
     create_tables()
     print("✅ Database tables initialized successfully!")
+    
+    # Create default admin account
+    create_default_admin()
     
     yield
     # Shutdown code

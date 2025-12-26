@@ -30,7 +30,7 @@ export default function AdminDashboard() {
     password: '',
     full_name: '',
     role: 'student',
-    is_visually_impaired: false
+    is_blind: false
   });
 
   useEffect(() => {
@@ -79,7 +79,7 @@ export default function AdminDashboard() {
         password: '',
         full_name: '',
         role: 'student',
-        is_visually_impaired: false
+        is_blind: false
       });
       loadData();
     } catch (error) {
@@ -94,7 +94,7 @@ export default function AdminDashboard() {
         full_name: selectedUser.full_name,
         role: selectedUser.role,
         is_active: selectedUser.is_active,
-        is_visually_impaired: selectedUser.is_visually_impaired
+        is_blind: selectedUser.is_blind
       });
       toast.success('User updated successfully!');
       setShowEditUserModal(false);
@@ -364,7 +364,7 @@ export default function AdminDashboard() {
                           </span>
                         </td>
                         <td className="px-4 py-3">
-                          {user.is_visually_impaired && (
+                          {user.is_blind && (
                             <span className="px-2 py-1 text-xs rounded bg-blue-100 text-blue-800">
                               Visually Impaired
                             </span>
@@ -563,8 +563,8 @@ export default function AdminDashboard() {
                   <label className="flex items-center space-x-3">
                     <input
                       type="checkbox"
-                      checked={newUser.is_visually_impaired}
-                      onChange={(e) => setNewUser({ ...newUser, is_visually_impaired: e.target.checked })}
+                      checked={newUser.is_blind}
+                      onChange={(e) => setNewUser({ ...newUser, is_blind: e.target.checked })}
                       className="w-5 h-5 rounded"
                     />
                     <span className="text-sm">Visually Impaired (Enable TTS features)</span>
@@ -641,8 +641,8 @@ export default function AdminDashboard() {
                   <label className="flex items-center space-x-3">
                     <input
                       type="checkbox"
-                      checked={selectedUser.is_visually_impaired}
-                      onChange={(e) => setSelectedUser({ ...selectedUser, is_visually_impaired: e.target.checked })}
+                      checked={selectedUser.is_blind}
+                      onChange={(e) => setSelectedUser({ ...selectedUser, is_blind: e.target.checked })}
                       className="w-5 h-5 rounded"
                     />
                     <span className="text-sm">Visually Impaired</span>
