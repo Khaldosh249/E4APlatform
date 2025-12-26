@@ -15,6 +15,7 @@ from db.session import get_db
 from db import courses, lessons, users, quizzes, assignments
 from db.users import User
 from db.models import QuizAttempt, Submission, LessonProgress
+from db.lessons import LessonAudio
 from core.security import SECRET_KEY, ALGORITHM
 
 router = APIRouter(prefix="/voice", tags=["voice"])
@@ -693,17 +694,36 @@ async def execute_function(
         
         session_manager.update_session(user_id, mode="lesson", current_lesson_id=lesson_id, current_course_id=lesson.course_id)
         
+        # Get lesson audio if available
+        lesson_audio = db.query(LessonAudio).filter(
+            LessonAudio.lesson_id == lesson_id,
+            LessonAudio.is_processed == True
+        ).first()
+        
+        audio_url = lesson_audio.audio_url if lesson_audio else None
+        
         await send_context_update({
             "action": "start_lesson",
             "lesson": {
                 "id": lesson.id,
                 "title": lesson.title,
                 "content_text": lesson.content_text,
-                "duration_minutes": lesson.duration_minutes
-            }
+                "duration_minutes": lesson.duration_minutes,
+                "audio_url": audio_url
+            },
+            "has_audio": True if audio_url else False,  # Signal that audio is available
+            "wait_for_space": True if audio_url else False  # Wait for user to press space to start audio
         })
         
-        # Truncate content for voice
+        # If audio is available, tell user to press space to start; otherwise read content
+        if audio_url:
+            return {
+                "success": True,
+                "lesson": {"id": lesson.id, "title": lesson.title},
+                "message": f"Lesson: {lesson.title} is ready. Press Space to start the audio lesson."
+            }
+        
+        # Truncate content for voice if no audio
         content = lesson.content_text or ""
         if len(content) > 2000:
             content = content[:2000] + "... The content continues. Say 'continue reading' to hear more."
