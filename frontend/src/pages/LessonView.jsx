@@ -46,18 +46,12 @@ export default function LessonView() {
           const progressRes = await api.get(`/lessons/${lessonId}/progress`);
           setProgress(progressRes.data);
         } catch (e) {
-          // Create progress if doesn't exist
-          try {
-            const newProgress = await api.post(`/lessons/${lessonId}/progress`);
-            setProgress(newProgress.data);
-          } catch (err) {
-            // Progress already exists or other error
-          }
+          // Progress will be created automatically by the endpoint
         }
       }
 
       // Auto-enable TTS for visually impaired users
-      if (user?.is_visually_impaired || autoPlayTTS) {
+      if (user?.is_blind || autoPlayTTS) {
         setTtsEnabled(true);
       }
     } catch (error) {
@@ -68,11 +62,11 @@ export default function LessonView() {
   };
 
   const markAsCompleted = async () => {
-    if (!isStudent || progress?.completed) return;
+    if (!isStudent || progress?.is_completed) return;
     
     try {
-      await api.put(`/lessons/${lessonId}/progress`, { completed: true });
-      setProgress(prev => ({ ...prev, completed: true }));
+      const res = await api.put(`/lessons/${lessonId}/progress`, { completed: true });
+      setProgress(res.data);
       toast.success('Lesson marked as completed!');
     } catch (error) {
       toast.error('Failed to update progress');
@@ -215,7 +209,7 @@ export default function LessonView() {
             
             {isStudent && (
               <div className="flex items-center gap-2">
-                {progress?.completed ? (
+                {progress?.is_completed ? (
                   <span className="flex items-center text-green-600 font-medium">
                     <CheckCircle className="h-5 w-5 mr-1" />
                     Completed
@@ -237,20 +231,21 @@ export default function LessonView() {
           {lesson.audio_url && (
             <div className="mb-6 p-4 bg-primary-50 rounded-lg">
               <div className="flex items-center justify-between mb-3">
-                <span className="flex items-center text-primary-700 font-medium">
-                  <Volume2 className="h-5 w-5 mr-2" />
-                  Text-to-Speech Audio
-                </span>
+                
                 <button
                   onClick={() => setTtsEnabled(!ttsEnabled)}
                   className={`p-2 rounded ${
                     ttsEnabled 
-                      ? 'bg-primary-600 text-white' 
+                      ? 'text-white' 
                       : 'bg-white text-gray-600'
                   }`}
                   aria-label={ttsEnabled ? 'Disable TTS' : 'Enable TTS'}
                 >
-                  {ttsEnabled ? <Volume2 className="h-5 w-5" /> : <VolumeX className="h-5 w-5" />}
+                  <span className="flex items-center text-primary-700 font-medium">
+                  <Volume2 className="h-5 w-5 mr-2" />
+                  Lesson Audio
+                  </span>
+                  <br />
                 </button>
               </div>
               

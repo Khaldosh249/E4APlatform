@@ -16,6 +16,28 @@ from datetime import datetime
 router = APIRouter(prefix="/lessons", tags=["Lessons"])
 
 
+def lesson_to_response(lesson: Lesson, db: Session) -> dict:
+    """Convert lesson model to response dict with audio_url"""
+    lesson_audio = db.query(LessonAudio).filter(LessonAudio.lesson_id == lesson.id).first()
+    
+    return {
+        "id": lesson.id,
+        "course_id": lesson.course_id,
+        "title": lesson.title,
+        "description": lesson.description,
+        "content_text": lesson.content_text,
+        "content_type": lesson.content_type,
+        "order_index": lesson.order_index,
+        "file_url": lesson.file_url,
+        "audio_url": lesson_audio.audio_url if lesson_audio else None,
+        "duration": lesson.duration,
+        "duration_minutes": lesson.duration // 60 if lesson.duration else 10,
+        "is_published": lesson.is_published,
+        "created_at": lesson.created_at,
+        "updated_at": lesson.updated_at
+    }
+
+
 @router.get("/course/{course_id}", response_model=List[LessonResponse])
 def get_course_lessons(
     course_id: int,
@@ -37,7 +59,7 @@ def get_course_lessons(
         query = query.filter(Lesson.is_published == True)
     
     lessons = query.order_by(Lesson.order_index).all()
-    return lessons
+    return [lesson_to_response(lesson, db) for lesson in lessons]
 
 
 @router.get("/{lesson_id}", response_model=LessonResponse)
@@ -60,6 +82,8 @@ def get_lesson(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Lesson is not published"
         )
+    
+    return lesson_to_response(lesson, db)
     
     return lesson
 
@@ -208,13 +232,33 @@ def delete_lesson(
     return {"message": "Lesson deleted successfully"}
 
 
+@router.get("/progress/course/{course_id}", response_model=List[LessonProgressResponse])
+def get_course_progress(
+    course_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get student's progress for all lessons in a course"""
+    # Get all lesson IDs for this course
+    lesson_ids = db.query(Lesson.id).filter(Lesson.course_id == course_id).all()
+    lesson_ids = [l[0] for l in lesson_ids]
+    
+    # Get progress for these lessons
+    progress_list = db.query(LessonProgress).filter(
+        LessonProgress.lesson_id.in_(lesson_ids),
+        LessonProgress.student_id == current_user.id
+    ).all()
+    
+    return progress_list
+
+
 @router.get("/{lesson_id}/progress", response_model=LessonProgressResponse)
 def get_lesson_progress(
     lesson_id: int,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Get student's progress for a lesson"""
+    """Get student's progress for a lesson (creates if not exists)"""
     progress = db.query(LessonProgress).filter(
         LessonProgress.lesson_id == lesson_id,
         LessonProgress.student_id == current_user.id
@@ -259,8 +303,10 @@ def update_lesson_progress(
         setattr(progress, field, value)
     
     # Update completion status
-    if progress_data.is_completed:
+    if progress_data.completed:
+        progress.is_completed = True
         progress.completed_at = datetime.now()
+        progress.completion_percentage = 100
     
     db.commit()
     db.refresh(progress)

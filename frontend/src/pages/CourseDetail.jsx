@@ -73,7 +73,7 @@ export default function CourseDetail() {
 
   const isLessonCompleted = (lessonId) => {
     const p = getLessonProgress(lessonId);
-    return p?.completed || false;
+    return p?.is_completed || false;
   };
   
   const getSubmissionForAssignment = (assignmentId) => {
@@ -166,11 +166,11 @@ export default function CourseDetail() {
                   <p className="text-sm text-primary-600 font-medium">Your Progress</p>
                   <p className="text-3xl font-bold text-primary-900">
                     {lessons.length > 0 
-                      ? Math.round((progress.filter(p => p.completed).length / lessons.length) * 100)
+                      ? Math.round((progress.filter(p => p.is_completed).length / lessons.length) * 100)
                       : 0}%
                   </p>
                   <p className="text-sm text-primary-600">
-                    {progress.filter(p => p.completed).length} / {lessons.length} lessons
+                    {progress.filter(p => p.is_completed).length} / {lessons.length} lessons
                   </p>
                 </div>
               </div>
@@ -227,7 +227,7 @@ export default function CourseDetail() {
                       <div className="flex-1">
                         <h3 className="text-lg font-semibold mb-1">{lesson.title}</h3>
                         <p className="text-gray-600 text-sm mb-2 line-clamp-2">
-                          {lesson.content?.substring(0, 150)}...
+                          {lesson.description || lesson.content_text?.substring(0, 150)}...
                         </p>
                         
                         <div className="flex items-center gap-4 text-sm text-gray-500">

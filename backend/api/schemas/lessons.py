@@ -29,7 +29,9 @@ class LessonResponse(LessonBase):
     id: int
     course_id: int
     file_url: Optional[str] = None
+    audio_url: Optional[str] = None
     duration: Optional[int] = None
+    duration_minutes: Optional[int] = None
     is_published: bool
     created_at: datetime
     updated_at: datetime
@@ -47,7 +49,13 @@ class LessonProgressResponse(BaseModel):
     time_spent: int
     last_position: int
     started_at: datetime
+    completed_at: Optional[datetime] = None
     last_accessed: datetime
+    
+    # Alias for frontend compatibility
+    @property
+    def completed(self) -> bool:
+        return self.is_completed
     
     class Config:
         from_attributes = True
@@ -57,4 +65,4 @@ class LessonProgressUpdate(BaseModel):
     completion_percentage: Optional[int] = None
     time_spent: Optional[int] = None
     last_position: Optional[int] = None
-    is_completed: Optional[bool] = None
+    completed: Optional[bool] = None
