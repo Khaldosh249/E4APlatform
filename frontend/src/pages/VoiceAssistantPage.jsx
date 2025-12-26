@@ -686,14 +686,24 @@ const VoiceAssistantPage = () => {
     }
   }, [isListening, isConnected, connect, startAudioCapture, stopAudioCapture]);
   
-  // Auto-connect on mount
+  // Auto-connect on mount and auto-start for visually impaired users
   useEffect(() => {
     mountedRef.current = true;
     
     // Small delay to ensure component is fully mounted
-    const connectTimer = setTimeout(() => {
+    const connectTimer = setTimeout(async () => {
       if (mountedRef.current) {
-        connect();
+        await connect();
+        
+        // Auto-start listening for visually impaired users after connection
+        if (user?.is_blind) {
+          // Wait for connection to be established
+          setTimeout(() => {
+            if (mountedRef.current && wsRef.current?.readyState === WebSocket.OPEN) {
+              startAudioCapture();
+            }
+          }, 1000);
+        }
       }
     }, 100);
     
@@ -715,6 +725,13 @@ const VoiceAssistantPage = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   
+  // Navigate to dashboard based on user role
+  const goToDashboard = useCallback(() => {
+    if (user?.role === 'admin') navigate('/admin');
+    else if (user?.role === 'teacher') navigate('/teacher');
+    else navigate('/student');
+  }, [user, navigate]);
+
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (event) => {
@@ -724,13 +741,13 @@ const VoiceAssistantPage = () => {
       }
       
       if (event.code === 'Escape') {
-        navigate(-1);
+        goToDashboard();
       }
     };
     
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [toggleListening, navigate]);
+  }, [toggleListening, goToDashboard]);
   
   // Parse quiz options helper
   const parseOptions = (options) => {
@@ -1168,9 +1185,9 @@ const VoiceAssistantPage = () => {
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center space-x-4">
             <button
-              onClick={() => navigate(-1)}
+              onClick={goToDashboard}
               className="p-2 hover:bg-white/20 rounded-full transition-colors"
-              aria-label="Go back"
+              aria-label="Go to dashboard"
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />

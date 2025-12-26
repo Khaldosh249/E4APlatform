@@ -4,13 +4,12 @@ import {
   Check, Monitor, Accessibility
 } from 'lucide-react';
 import Navbar from '../components/Navbar';
-import api from '../lib/api';
 import toast from 'react-hot-toast';
 import useAccessibilityStore from '../store/accessibilityStore';
 import useAuthStore from '../store/authStore';
 
 export default function AccessibilitySettings() {
-  const { user, updateUser } = useAuthStore();
+  const { user, updateProfile } = useAuthStore();
   const { 
     highContrast, 
     setHighContrast, 
@@ -23,7 +22,8 @@ export default function AccessibilitySettings() {
   } = useAccessibilityStore();
   
   const [saving, setSaving] = useState(false);
-  const [isVisuallyImpaired, setIsVisuallyImpaired] = useState(user?.is_visually_impaired || false);
+  const [isBlind, setIsBlind] = useState(user?.is_blind || false);
+  const [voiceSpeed, setVoiceSpeed] = useState(user?.voice_speed || 1);
 
   useEffect(() => {
     // Apply reduce motion preference
@@ -37,16 +37,14 @@ export default function AccessibilitySettings() {
   const handleSavePreferences = async () => {
     setSaving(true);
     try {
-      await api.put('/auth/profile', {
-        is_visually_impaired: isVisuallyImpaired
+      await updateProfile({
+        is_blind: isBlind,
+        voice_speed: voiceSpeed
       });
-      
-      if (updateUser) {
-        updateUser({ is_visually_impaired: isVisuallyImpaired });
-      }
       
       toast.success('Preferences saved successfully!');
     } catch (error) {
+      console.error('Save error:', error);
       toast.error('Failed to save preferences');
     } finally {
       setSaving(false);
@@ -77,30 +75,44 @@ export default function AccessibilitySettings() {
               <h2 className="text-xl font-semibold mb-2">Visual Accessibility</h2>
               <p className="text-gray-600 mb-4">
                 Enable enhanced accessibility features for visually impaired users. 
-                This will automatically enable Text-to-Speech for all lessons and content.
+                This will automatically open the Voice Assistant when you log in.
               </p>
               
               <label className="flex items-center space-x-3 p-4 bg-gray-50 rounded-lg cursor-pointer">
                 <input
                   type="checkbox"
-                  checked={isVisuallyImpaired}
-                  onChange={(e) => setIsVisuallyImpaired(e.target.checked)}
+                  checked={isBlind}
+                  onChange={(e) => setIsBlind(e.target.checked)}
                   className="w-6 h-6 rounded"
                 />
                 <div>
                   <span className="font-medium">I am visually impaired</span>
                   <p className="text-sm text-gray-500">
-                    Enable all visual accessibility features
+                    Enable all visual accessibility features and auto-start Voice Assistant on login
                   </p>
                 </div>
               </label>
+              
+              {/* Voice Speed Setting */}
+              <div className="mt-4">
+                <label className="block font-medium mb-2">Voice Speed</label>
+                <select
+                  value={voiceSpeed}
+                  onChange={(e) => setVoiceSpeed(Number(e.target.value))}
+                  className="w-full p-3 border rounded-lg"
+                >
+                  <option value={0}>Slow</option>
+                  <option value={1}>Normal</option>
+                  <option value={2}>Fast</option>
+                </select>
+              </div>
               
               <button
                 onClick={handleSavePreferences}
                 disabled={saving}
                 className="mt-4 btn btn-primary"
               >
-                {saving ? 'Saving...' : 'Save Preference'}
+                {saving ? 'Saving...' : 'Save Preferences'}
               </button>
             </div>
           </div>

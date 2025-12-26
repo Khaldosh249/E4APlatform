@@ -20,6 +20,12 @@ export default function Login() {
       const user = await login(email, password);
       toast.success(`Welcome back, ${user.full_name}!`);
       
+      // If user is visually impaired (blind), redirect to voice assistant
+      if (user.is_blind) {
+        navigate('/voice-assistant');
+        return;
+      }
+      
       // Navigate based on role
       if (user.role === 'admin') navigate('/admin');
       else if (user.role === 'teacher') navigate('/teacher');

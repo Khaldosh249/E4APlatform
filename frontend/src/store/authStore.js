@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import api from '../lib/api';
 
-const useAuthStore = create((set) => ({
+const useAuthStore = create((set, get) => ({
   user: null,
   token: null,
   isAuthenticated: false,
@@ -40,6 +40,17 @@ const useAuthStore = create((set) => ({
     const response = await api.put('/users/me/update', userData);
     set({ user: response.data });
     return response.data;
+  },
+
+  updateUser: (userData) => {
+    const currentUser = get().user;
+    set({ user: { ...currentUser, ...userData } });
+  },
+
+  // Check if user should be redirected to voice assistant
+  shouldRedirectToVoiceAssistant: () => {
+    const user = get().user;
+    return user?.is_blind === true;
   },
 }));
 

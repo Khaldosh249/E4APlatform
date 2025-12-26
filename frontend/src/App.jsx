@@ -16,7 +16,6 @@ import ProgressTracking from './pages/ProgressTracking';
 import AccessibilitySettings from './pages/AccessibilitySettings';
 import VoiceAssistantPage from './pages/VoiceAssistantPage';
 import ProtectedRoute from './components/ProtectedRoute';
-import VoiceAssistantButton from './components/VoiceAssistantButton';
 import useAccessibilityStore from './store/accessibilityStore';
 import { useEffect } from 'react';
 
@@ -55,8 +54,6 @@ function App() {
           }}
         />
         
-        {/* Voice Assistant for visually impaired students */}
-        <VoiceAssistantButton />
         
         <Routes>
           <Route path="/" element={<Navigate to="/login" replace />} />
