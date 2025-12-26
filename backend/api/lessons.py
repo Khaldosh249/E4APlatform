@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 from db.session import get_db, SessionLocal
 from db.users import User, UserRole
-from db.courses import Course
+from db.courses import Course, Enrollment
 from db.lessons import Lesson, LessonAudio, LessonProgress
 from api.schemas.lessons import (
     LessonCreate, LessonUpdate, LessonResponse,
@@ -374,6 +374,32 @@ def update_lesson_progress(
         progress.is_completed = True
         progress.completed_at = datetime.now()
         progress.completion_percentage = 100
+        
+        # Update course progress will be handled here
+        course = progress.lesson.course
+        
+        enrollment = db.query(Enrollment).filter(
+            Enrollment.course_id == course.id,
+            Enrollment.student_id == current_user.id
+        ).first()
+        
+        if enrollment:
+            # Calculate overall course progress
+            total_lessons = db.query(Lesson).filter(Lesson.course_id == course.id, Lesson.is_published == True).count()
+            completed_lessons = db.query(LessonProgress).join(Lesson).filter(
+                Lesson.course_id == course.id,
+                LessonProgress.student_id == current_user.id,
+                LessonProgress.is_completed == True
+            ).count()
+            
+            enrollment.progress_percentage = (completed_lessons / total_lessons) * 100 if total_lessons > 0 else 0
+            if enrollment.progress_percentage == 100:
+                enrollment.completion_date = datetime.now()
+                enrollment.completed = True
+                
+        
+        
+        
     
     db.commit()
     db.refresh(progress)
