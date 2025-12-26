@@ -10,7 +10,8 @@ from db.quizzes import Quiz, Question, QuizAttempt, Answer, QuestionType
 from api.schemas.quizzes import (
     QuizCreate, QuizUpdate, QuizResponse,
     QuestionCreate, QuestionResponse,
-    QuizSubmit, QuizAttemptResponse
+    QuizSubmit, QuizAttemptResponse, QuizAttemptDetailResponse,
+    QuizGradeSubmit, AnswerResponse
 )
 from api.dependencies import get_current_user, get_teacher_user
 from core.tts import generate_tts_audio
@@ -83,7 +84,8 @@ def create_quiz(
         passing_score=quiz_data.passing_score,
         max_attempts=quiz_data.max_attempts,
         shuffle_questions=quiz_data.shuffle_questions,
-        show_results_immediately=quiz_data.show_results_immediately
+        show_results_immediately=quiz_data.show_results_immediately,
+        is_auto_graded=quiz_data.is_auto_graded
     )
     
     # Generate TTS for instructions
@@ -321,7 +323,7 @@ def submit_quiz(
     quiz = db.query(Quiz).filter(Quiz.id == quiz_id).first()
     total_score = 0.0
     
-    # Process each answer and grade automatically
+    # Process each answer
     for answer_data in submission.answers:
         question = db.query(Question).filter(
             Question.id == answer_data.question_id
@@ -337,32 +339,45 @@ def submit_quiz(
             answer_text=answer_data.answer_text
         )
         
-        # Auto-grade based on question type
-        is_correct = False
-        if question.question_type == QuestionType.MCQ:
-            if answer_data.answer_text and answer_data.answer_text.strip() == question.correct_answer:
-                is_correct = True
-        elif question.question_type == QuestionType.TRUE_FALSE:
-            if answer_data.answer_text and answer_data.answer_text.lower() == question.correct_answer.lower():
-                is_correct = True
-        elif question.question_type == QuestionType.SHORT_ANSWER:
-            # For short answer, check if answer contains keywords (simple matching)
-            if answer_data.answer_text and question.correct_answer:
-                if question.correct_answer.lower() in answer_data.answer_text.lower():
+        # Only auto-grade if quiz is set to auto-graded (None defaults to True)
+        if quiz.is_auto_graded is not False:
+            is_correct = False
+            if question.question_type == QuestionType.MCQ:
+                if answer_data.answer_text and answer_data.answer_text.strip() == question.correct_answer:
                     is_correct = True
-        
-        answer.is_correct = is_correct
-        answer.points_earned = question.points if is_correct else 0
-        total_score += answer.points_earned
+            elif question.question_type == QuestionType.TRUE_FALSE:
+                if answer_data.answer_text and answer_data.answer_text.lower() == question.correct_answer.lower():
+                    is_correct = True
+            elif question.question_type == QuestionType.SHORT_ANSWER:
+                # For short answer, check if answer contains keywords (simple matching)
+                if answer_data.answer_text and question.correct_answer:
+                    if question.correct_answer.lower() in answer_data.answer_text.lower():
+                        is_correct = True
+            
+            answer.is_correct = is_correct
+            answer.points_earned = question.points if is_correct else 0
+            total_score += answer.points_earned
+        else:
+            # Manual grading - no score yet
+            answer.is_correct = None
+            answer.points_earned = 0
         
         db.add(answer)
     
-    # Update attempt with results
-    attempt.score = total_score
-    attempt.percentage = (total_score / quiz.max_score * 100) if quiz.max_score > 0 else 0
-    attempt.passed = attempt.percentage >= quiz.passing_score
+    # Update attempt with results (None defaults to True for auto-grading)
+    if quiz.is_auto_graded is not False:
+        attempt.score = total_score
+        attempt.percentage = (total_score / quiz.max_score * 100) if quiz.max_score > 0 else 0
+        attempt.passed = attempt.percentage >= quiz.passing_score
+        attempt.is_graded = True
+    else:
+        # Manual grading - mark as submitted but not graded
+        attempt.score = 0
+        attempt.percentage = 0
+        attempt.passed = False
+        attempt.is_graded = False
+    
     attempt.is_completed = True
-    attempt.is_graded = True
     attempt.time_submitted = datetime.now()
     
     # Calculate time taken
@@ -413,4 +428,134 @@ def get_all_attempts(
         )
     
     attempts = db.query(QuizAttempt).filter(QuizAttempt.quiz_id == quiz_id).all()
+    return attempts
+
+
+@router.get("/{quiz_id}/all-attempts-detail", response_model=List[QuizAttemptDetailResponse])
+def get_all_attempts_detail(
+    quiz_id: int,
+    current_user: User = Depends(get_teacher_user),
+    db: Session = Depends(get_db)
+):
+    """Get all attempts with answers for a quiz (Teacher/Admin only) - for grading"""
+    quiz = db.query(Quiz).filter(Quiz.id == quiz_id).first()
+    if not quiz:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Quiz not found"
+        )
+    
+    # Check ownership
+    course = db.query(Course).filter(Course.id == quiz.course_id).first()
+    if current_user.role == UserRole.TEACHER and course.teacher_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have permission to view attempts for this quiz"
+        )
+    
+    attempts = db.query(QuizAttempt).filter(QuizAttempt.quiz_id == quiz_id).all()
+    return attempts
+
+
+@router.get("/attempts/{attempt_id}", response_model=QuizAttemptDetailResponse)
+def get_attempt_detail(
+    attempt_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get detailed attempt with answers (Student can view own, Teacher can view all in their courses)"""
+    attempt = db.query(QuizAttempt).filter(QuizAttempt.id == attempt_id).first()
+    if not attempt:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Attempt not found"
+        )
+    
+    # Students can only view their own attempts
+    if current_user.role == UserRole.STUDENT:
+        if attempt.student_id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You can only view your own attempts"
+            )
+    elif current_user.role == UserRole.TEACHER:
+        # Teachers can only view attempts for quizzes in their courses
+        quiz = db.query(Quiz).filter(Quiz.id == attempt.quiz_id).first()
+        course = db.query(Course).filter(Course.id == quiz.course_id).first()
+        if course.teacher_id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You can only view attempts for your courses"
+            )
+    
+    return attempt
+
+
+@router.post("/attempts/{attempt_id}/grade")
+def grade_attempt(
+    attempt_id: int,
+    grade_data: QuizGradeSubmit,
+    current_user: User = Depends(get_teacher_user),
+    db: Session = Depends(get_db)
+):
+    """Grade a quiz attempt (Teacher/Admin only)"""
+    attempt = db.query(QuizAttempt).filter(QuizAttempt.id == attempt_id).first()
+    if not attempt:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Attempt not found"
+        )
+    
+    # Check ownership
+    quiz = db.query(Quiz).filter(Quiz.id == attempt.quiz_id).first()
+    course = db.query(Course).filter(Course.id == quiz.course_id).first()
+    if current_user.role == UserRole.TEACHER and course.teacher_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have permission to grade this quiz"
+        )
+    
+    total_score = 0.0
+    
+    # Grade each answer
+    for grade in grade_data.answers:
+        answer = db.query(Answer).filter(Answer.id == grade.answer_id).first()
+        if not answer or answer.attempt_id != attempt_id:
+            continue
+        
+        answer.is_correct = grade.is_correct
+        answer.points_earned = grade.points_earned
+        answer.teacher_feedback = grade.feedback
+        answer.graded_at = datetime.now()
+        total_score += grade.points_earned
+    
+    # Update attempt
+    attempt.score = total_score
+    attempt.percentage = (total_score / quiz.max_score * 100) if quiz.max_score > 0 else 0
+    attempt.passed = attempt.percentage >= quiz.passing_score
+    attempt.is_graded = True
+    
+    db.commit()
+    db.refresh(attempt)
+    
+    return {"message": "Attempt graded successfully", "score": attempt.score, "percentage": attempt.percentage, "passed": attempt.passed}
+
+
+@router.get("/my-attempts/all", response_model=List[QuizAttemptDetailResponse])
+def get_all_my_attempts(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get all quiz attempts for the current student"""
+    if current_user.role != UserRole.STUDENT:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only students can view their attempts"
+        )
+    
+    attempts = db.query(QuizAttempt).filter(
+        QuizAttempt.student_id == current_user.id,
+        QuizAttempt.is_completed == True
+    ).order_by(QuizAttempt.time_submitted.desc()).all()
+    
     return attempts

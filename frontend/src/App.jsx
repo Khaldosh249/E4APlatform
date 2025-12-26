@@ -12,6 +12,8 @@ import AssignmentSubmission from './pages/AssignmentSubmission';
 import TeacherCourseManagement from './pages/TeacherCourseManagement';
 import QuizQuestionManagement from './pages/QuizQuestionManagement';
 import GradingInterface from './pages/GradingInterface';
+import QuizGradingInterface from './pages/QuizGradingInterface';
+import MyQuizResults from './pages/MyQuizResults';
 import ProgressTracking from './pages/ProgressTracking';
 import AccessibilitySettings from './pages/AccessibilitySettings';
 import VoiceAssistantPage from './pages/VoiceAssistantPage';
@@ -118,6 +120,14 @@ function App() {
             } 
           />
           <Route 
+            path="/student/quiz-results" 
+            element={
+              <ProtectedRoute allowedRoles={['student']}>
+                <MyQuizResults />
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
             path="/voice-assistant" 
             element={
               <ProtectedRoute allowedRoles={['student']}>
@@ -188,6 +198,14 @@ function App() {
             element={
               <ProtectedRoute allowedRoles={['teacher', 'admin']}>
                 <GradingInterface />
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/teacher/courses/:courseId/quizzes/:quizId/grade" 
+            element={
+              <ProtectedRoute allowedRoles={['teacher', 'admin']}>
+                <QuizGradingInterface />
               </ProtectedRoute>
             } 
           />

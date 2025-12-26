@@ -97,10 +97,10 @@ export default function QuizTaking() {
     
     setSubmitting(true);
     try {
-      // Format answers for API
+      // Format answers for API - use answer_text as expected by backend
       const formattedAnswers = Object.entries(answers).map(([questionId, answer]) => ({
         question_id: parseInt(questionId),
-        answer: answer
+        answer_text: answer
       }));
 
       const response = await api.post(`/quizzes/${quizId}/submit`, {
@@ -420,52 +420,88 @@ export default function QuizTaking() {
         {/* Results */}
         {showResults && attempt && (
           <div className="card mt-6 text-center">
-            <div className={`w-20 h-20 mx-auto rounded-full flex items-center justify-center mb-4 ${
-              attempt.passed ? 'bg-green-100' : 'bg-red-100'
-            }`}>
-              {attempt.passed ? (
-                <CheckCircle className="h-10 w-10 text-green-600" />
-              ) : (
-                <XCircle className="h-10 w-10 text-red-600" />
-              )}
-            </div>
-            
-            <h2 className="text-2xl font-bold mb-2">
-              {attempt.passed ? 'Congratulations!' : 'Quiz Completed'}
-            </h2>
-            
-            <p className="text-4xl font-bold mb-2 text-primary-600">
-              {attempt.score}%
-            </p>
-            
-            <p className={`text-lg ${attempt.passed ? 'text-green-600' : 'text-red-600'}`}>
-              {attempt.passed ? 'You passed!' : `You need ${quiz.pass_score}% to pass`}
-            </p>
-            
-            <div className="mt-6 flex justify-center gap-4">
-              <Link
-                to={`${basePath}/courses/${courseId}`}
-                className="btn btn-secondary"
-              >
-                Back to Course
-              </Link>
-              {!attempt.passed && (
-                <button
-                  onClick={() => {
-                    setShowResults(false);
-                    setQuizStarted(false);
-                    setAnswers({});
-                    setAttempt(null);
-                    if (quiz.time_limit) {
-                      setTimeRemaining(quiz.time_limit * 60);
-                    }
-                  }}
-                  className="btn btn-primary"
-                >
-                  Try Again
-                </button>
-              )}
-            </div>
+            {/* For manually graded quizzes that are not yet graded */}
+            {!attempt.is_graded ? (
+              <>
+                <div className="w-20 h-20 mx-auto rounded-full flex items-center justify-center mb-4 bg-yellow-100">
+                  <Clock className="h-10 w-10 text-yellow-600" />
+                </div>
+                
+                <h2 className="text-2xl font-bold mb-2">Quiz Submitted!</h2>
+                
+                <p className="text-lg text-gray-600 mb-4">
+                  Your quiz has been submitted for review.
+                </p>
+                
+                <p className="text-gray-500">
+                  Your teacher will grade this quiz. You&apos;ll be able to see your results once it&apos;s graded.
+                </p>
+                
+                <div className="mt-6 flex justify-center gap-4">
+                  <Link
+                    to={`${basePath}/courses/${courseId}`}
+                    className="btn btn-secondary"
+                  >
+                    Back to Course
+                  </Link>
+                  <Link
+                    to="/student/quiz-results"
+                    className="btn btn-primary"
+                  >
+                    View My Quiz Results
+                  </Link>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className={`w-20 h-20 mx-auto rounded-full flex items-center justify-center mb-4 ${
+                  attempt.passed ? 'bg-green-100' : 'bg-red-100'
+                }`}>
+                  {attempt.passed ? (
+                    <CheckCircle className="h-10 w-10 text-green-600" />
+                  ) : (
+                    <XCircle className="h-10 w-10 text-red-600" />
+                  )}
+                </div>
+                
+                <h2 className="text-2xl font-bold mb-2">
+                  {attempt.passed ? 'Congratulations!' : 'Quiz Completed'}
+                </h2>
+                
+                <p className="text-4xl font-bold mb-2 text-primary-600">
+                  {attempt.percentage ? attempt.percentage.toFixed(0) : attempt.score}%
+                </p>
+                
+                <p className={`text-lg ${attempt.passed ? 'text-green-600' : 'text-red-600'}`}>
+                  {attempt.passed ? 'You passed!' : `You need ${quiz.passing_score || quiz.pass_score}% to pass`}
+                </p>
+                
+                <div className="mt-6 flex justify-center gap-4">
+                  <Link
+                    to={`${basePath}/courses/${courseId}`}
+                    className="btn btn-secondary"
+                  >
+                    Back to Course
+                  </Link>
+                  {!attempt.passed && quiz.is_auto_graded && (
+                    <button
+                      onClick={() => {
+                        setShowResults(false);
+                        setQuizStarted(false);
+                        setAnswers({});
+                        setAttempt(null);
+                        if (quiz.time_limit) {
+                          setTimeRemaining(quiz.time_limit * 60);
+                        }
+                      }}
+                      className="btn btn-primary"
+                    >
+                      Try Again
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
           </div>
         )}
       </div>

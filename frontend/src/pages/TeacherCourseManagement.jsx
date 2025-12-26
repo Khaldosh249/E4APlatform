@@ -503,7 +503,7 @@ export default function TeacherCourseManagement() {
                     <div>
                       <h3 className="font-semibold">{quiz.title}</h3>
                       <div className="flex items-center gap-3 text-sm text-gray-500">
-                        <span>Pass Score: {quiz.pass_score}%</span>
+                        <span>Pass Score: {quiz.passing_score || quiz.pass_score}%</span>
                         <span className={`px-2 py-0.5 rounded text-xs ${
                           quiz.is_auto_graded 
                             ? 'bg-green-100 text-green-800' 
@@ -517,6 +517,12 @@ export default function TeacherCourseManagement() {
                     
                     <div className="flex items-center gap-2">
                       <Link
+                        to={`/teacher/courses/${courseId}/quizzes/${quiz.id}/grade`}
+                        className="btn btn-primary text-sm"
+                      >
+                        Grade Submissions
+                      </Link>
+                      <Link
                         to={`/teacher/courses/${courseId}/quizzes/${quiz.id}/manage`}
                         className="btn btn-secondary text-sm"
                       >
@@ -528,8 +534,8 @@ export default function TeacherCourseManagement() {
                           setQuizForm({
                             title: quiz.title,
                             description: quiz.description || '',
-                            pass_score: quiz.pass_score,
-                            is_auto_graded: quiz.is_auto_graded,
+                            pass_score: quiz.passing_score || quiz.pass_score,
+                            is_auto_graded: quiz.is_auto_graded ?? true,
                             time_limit: quiz.time_limit,
                             is_published: quiz.is_published || false
                           });

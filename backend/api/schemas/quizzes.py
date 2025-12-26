@@ -37,6 +37,7 @@ class QuizBase(BaseModel):
     max_attempts: int = 0
     shuffle_questions: bool = False
     show_results_immediately: bool = True
+    is_auto_graded: bool = True  # False for manual grading by teacher
 
 
 class QuizCreate(QuizBase):
@@ -52,6 +53,7 @@ class QuizUpdate(BaseModel):
     passing_score: Optional[int] = None
     max_attempts: Optional[int] = None
     is_published: Optional[bool] = None
+    is_auto_graded: Optional[bool] = None
 
 
 class QuizResponse(QuizBase):
@@ -61,6 +63,7 @@ class QuizResponse(QuizBase):
     available_from: Optional[datetime] = None
     available_until: Optional[datetime] = None
     is_published: bool
+    is_auto_graded: Optional[bool] = True
     created_at: datetime
     
     class Config:
@@ -74,6 +77,41 @@ class AnswerSubmit(BaseModel):
 
 class QuizSubmit(BaseModel):
     answers: list[AnswerSubmit]
+
+
+class AnswerResponse(BaseModel):
+    id: int
+    attempt_id: int
+    question_id: int
+    answer_text: Optional[str] = None
+    is_correct: Optional[bool] = None
+    points_earned: float
+    teacher_feedback: Optional[str] = None
+    answered_at: datetime
+    graded_at: Optional[datetime] = None
+    
+    class Config:
+        from_attributes = True
+
+
+class AnswerGrade(BaseModel):
+    answer_id: int
+    is_correct: bool
+    points_earned: float
+    feedback: Optional[str] = None
+
+
+class QuizGradeSubmit(BaseModel):
+    answers: list[AnswerGrade]
+
+
+class StudentInfo(BaseModel):
+    id: int
+    full_name: str
+    email: str
+    
+    class Config:
+        from_attributes = True
 
 
 class QuizAttemptResponse(BaseModel):
@@ -90,6 +128,15 @@ class QuizAttemptResponse(BaseModel):
     time_taken: Optional[int] = None
     is_completed: bool
     is_graded: bool
+    
+    class Config:
+        from_attributes = True
+
+
+class QuizAttemptDetailResponse(QuizAttemptResponse):
+    """Detailed attempt with answers and student info"""
+    student: Optional[StudentInfo] = None
+    answers: list[AnswerResponse] = []
     
     class Config:
         from_attributes = True

@@ -110,6 +110,30 @@ export default function StudentDashboard() {
           </Link>
         </div>
 
+        {/* Quick Links */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+          <Link 
+            to="/student/quiz-results"
+            className="card hover:shadow-lg transition-shadow flex items-center"
+          >
+            <Award className="h-6 w-6 text-primary-600 mr-3" />
+            <div>
+              <p className="font-semibold text-gray-900">My Quiz Results</p>
+              <p className="text-sm text-gray-600">View your quiz submissions and scores</p>
+            </div>
+          </Link>
+          <Link 
+            to="/student/progress"
+            className="card hover:shadow-lg transition-shadow flex items-center"
+          >
+            <TrendingUp className="h-6 w-6 text-green-600 mr-3" />
+            <div>
+              <p className="font-semibold text-gray-900">My Progress</p>
+              <p className="text-sm text-gray-600">Track your learning progress</p>
+            </div>
+          </Link>
+        </div>
+
         {/* My Courses */}
         <section className="mb-8">
           <h2 className="text-2xl font-bold text-gray-900 mb-4">My Courses</h2>
