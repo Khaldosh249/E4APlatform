@@ -24,6 +24,9 @@ export default function AssignmentSubmission() {
 
   const isStudent = user?.role === 'student';
   const basePath = isStudent ? '/student' : '/teacher';
+  
+  // Helper to check if submission is graded (use status field)
+  const isGraded = submission?.status === 'graded';
 
   useEffect(() => {
     loadAssignment();
@@ -38,9 +41,9 @@ export default function AssignmentSubmission() {
       // Load existing submission for students
       if (isStudent) {
         try {
-          const submissionRes = await api.get(`/assignments/${assignmentId}/my-submission`);
+          const submissionRes = await api.get(`/assignments/my-submissions/${assignmentId}`);
           setSubmission(submissionRes.data);
-          setContent(submissionRes.data.content || '');
+          setContent(submissionRes.data.text_answer || '');
           
           // Load feedback for this submission
           if (submissionRes.data.id) {
@@ -85,7 +88,7 @@ export default function AssignmentSubmission() {
 
       if (submission) {
         // Update existing submission
-        await api.put(`/assignments/submit`, jsonData, {
+        await api.post(`/assignments/submit/${jsonData.assignment_id}`, jsonData, {
           headers: {'Content-Type': 'application/json'}
         });
         toast.success('Submission updated!');
@@ -106,7 +109,7 @@ export default function AssignmentSubmission() {
   };
 
   const isOverdue = assignment?.due_date && new Date(assignment.due_date) < new Date();
-  const canSubmit = !submission?.is_graded && (!isOverdue || !submission);
+  const canSubmit = !isGraded && (!isOverdue || assignment?.allow_late_submission || !submission);
 
   if (loading) {
     return (
@@ -166,17 +169,24 @@ export default function AssignmentSubmission() {
             
             {submission && (
               <div className={`text-center p-3 rounded-lg ${
-                submission.is_graded 
+                isGraded 
                   ? 'bg-green-50' 
                   : 'bg-yellow-50'
               }`}>
                 <p className="text-sm font-medium">
-                  {submission.is_graded ? 'Graded' : 'Submitted'}
+                  {isGraded ? 'Graded' : 'Submitted - Pending Grade'}
                 </p>
-                {submission.is_graded && (
-                  <p className="text-2xl font-bold text-green-600">
+                {isGraded && (
+                  <p className={`text-2xl font-bold ${
+                    submission.score >= (assignment.max_score || 100) * 0.6 
+                      ? 'text-green-600' 
+                      : 'text-orange-600'
+                  }`}>
                     {submission.score} / {assignment.max_score || 100}
                   </p>
+                )}
+                {submission.is_late && (
+                  <p className="text-xs text-orange-600 mt-1">Submitted late</p>
                 )}
               </div>
             )}
@@ -216,6 +226,68 @@ export default function AssignmentSubmission() {
           )}
         </div>
 
+        {/* Submission Details Section */}
+        {isStudent && submission && (
+          <div className="card mb-6">
+            <h2 className="text-xl font-bold mb-4">Submission Details</h2>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="p-4 bg-gray-50 rounded-lg">
+                <p className="text-sm text-gray-500 mb-1">Status</p>
+                <p className={`font-medium ${
+                  isGraded ? 'text-green-600' : 'text-yellow-600'
+                }`}>
+                  {isGraded ? 'Graded' : 'Submitted - Pending Grade'}
+                </p>
+              </div>
+              
+              <div className="p-4 bg-gray-50 rounded-lg">
+                <p className="text-sm text-gray-500 mb-1">Submitted At</p>
+                <p className="font-medium">
+                  {submission.submitted_at 
+                    ? new Date(submission.submitted_at).toLocaleString() 
+                    : 'N/A'}
+                </p>
+              </div>
+              
+              {isGraded && (
+                <>
+                  <div className="p-4 bg-gray-50 rounded-lg">
+                    <p className="text-sm text-gray-500 mb-1">Score</p>
+                    <p className={`text-xl font-bold ${
+                      submission.score >= (assignment.max_score || 100) * 0.6 
+                        ? 'text-green-600' 
+                        : 'text-orange-600'
+                    }`}>
+                      {submission.score} / {assignment.max_score || 100}
+                      <span className="text-sm text-gray-500 ml-2">
+                        ({Math.round((submission.score / (assignment.max_score || 100)) * 100)}%)
+                      </span>
+                    </p>
+                  </div>
+                  
+                  <div className="p-4 bg-gray-50 rounded-lg">
+                    <p className="text-sm text-gray-500 mb-1">Graded At</p>
+                    <p className="font-medium">
+                      {submission.graded_at 
+                        ? new Date(submission.graded_at).toLocaleString() 
+                        : 'N/A'}
+                    </p>
+                  </div>
+                </>
+              )}
+              
+              {submission.is_late && (
+                <div className="p-4 bg-orange-50 rounded-lg col-span-full">
+                  <p className="text-sm text-orange-600 font-medium">
+                    ⚠️ This submission was made after the due date
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Submission Form (Students Only) */}
         {isStudent && (
           <div className="card mb-6">
@@ -223,7 +295,7 @@ export default function AssignmentSubmission() {
               {submission ? 'Your Submission' : 'Submit Assignment'}
             </h2>
             
-            {!canSubmit && submission?.is_graded && (
+            {!canSubmit && isGraded && (
               <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
                 <div className="flex items-center text-green-700">
                   <CheckCircle className="h-5 w-5 mr-2" />

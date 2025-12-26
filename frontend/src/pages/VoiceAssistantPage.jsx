@@ -1070,46 +1070,88 @@ const VoiceAssistantPage = () => {
     
     const { assignments } = displayContent;
     
+    const getStatusDisplay = (assignment) => {
+      if (assignment.status === 'graded') {
+        const percentage = Math.round((assignment.score / assignment.max_score) * 100);
+        const isGood = percentage >= 60;
+        return {
+          label: `Graded: ${assignment.score}/${assignment.max_score} (${percentage}%)`,
+          color: isGood ? 'green' : 'orange',
+          icon: '✓'
+        };
+      }
+      if (assignment.submitted) {
+        return {
+          label: 'Submitted - Pending Grade',
+          color: 'blue',
+          icon: '⏳'
+        };
+      }
+      if (assignment.due_date && new Date(assignment.due_date) < new Date()) {
+        return {
+          label: 'Overdue',
+          color: 'red',
+          icon: '!'
+        };
+      }
+      return {
+        label: 'Pending',
+        color: 'yellow',
+        icon: '○'
+      };
+    };
+    
     return (
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 mb-6">
         <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">Your Assignments</h2>
         
         <div className="space-y-3">
-          {assignments.map((assignment, idx) => (
-            <div 
-              key={assignment.id}
-              className={`p-4 rounded-lg border ${
-                assignment.submitted
-                  ? 'border-green-300 bg-green-50 dark:bg-green-900/20'
-                  : new Date(assignment.due_date) < new Date()
-                  ? 'border-red-300 bg-red-50 dark:bg-red-900/20'
-                  : 'border-gray-200 dark:border-gray-700'
-              }`}
-            >
-              <div className="flex items-center">
-                <span className="w-8 h-8 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center mr-3 font-medium">
-                  {idx + 1}
-                </span>
-                <div className="flex-1">
-                  <h3 className="font-medium text-gray-900 dark:text-white">{assignment.title}</h3>
-                  <p className="text-sm text-gray-500">
-                    {assignment.course_title} • Due: {new Date(assignment.due_date).toLocaleDateString()}
-                  </p>
-                </div>
-                <div className="ml-4">
-                  {assignment.submitted ? (
-                    <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm">
-                      ✓ Submitted
+          {assignments.map((assignment, idx) => {
+            const status = getStatusDisplay(assignment);
+            return (
+              <div 
+                key={assignment.id}
+                className={`p-4 rounded-lg border ${
+                  status.color === 'green' ? 'border-green-300 bg-green-50 dark:bg-green-900/20' :
+                  status.color === 'blue' ? 'border-blue-300 bg-blue-50 dark:bg-blue-900/20' :
+                  status.color === 'red' ? 'border-red-300 bg-red-50 dark:bg-red-900/20' :
+                  status.color === 'orange' ? 'border-orange-300 bg-orange-50 dark:bg-orange-900/20' :
+                  'border-yellow-300 bg-yellow-50 dark:bg-yellow-900/20'
+                }`}
+              >
+                <div className="flex items-center">
+                  <span className="w-8 h-8 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center mr-3 font-medium">
+                    {idx + 1}
+                  </span>
+                  <div className="flex-1">
+                    <h3 className="font-medium text-gray-900 dark:text-white">{assignment.title}</h3>
+                    <p className="text-sm text-gray-500">
+                      {assignment.course_title} • Due: {assignment.due_date ? new Date(assignment.due_date).toLocaleDateString() : 'No due date'}
+                    </p>
+                    {assignment.is_late && (
+                      <p className="text-xs text-orange-600">Submitted late</p>
+                    )}
+                    {assignment.submitted_at && (
+                      <p className="text-xs text-gray-400">
+                        Submitted: {new Date(assignment.submitted_at).toLocaleString()}
+                      </p>
+                    )}
+                  </div>
+                  <div className="ml-4">
+                    <span className={`px-3 py-1 rounded-full text-sm ${
+                      status.color === 'green' ? 'bg-green-100 text-green-800' :
+                      status.color === 'blue' ? 'bg-blue-100 text-blue-800' :
+                      status.color === 'red' ? 'bg-red-100 text-red-800' :
+                      status.color === 'orange' ? 'bg-orange-100 text-orange-800' :
+                      'bg-yellow-100 text-yellow-800'
+                    }`}>
+                      {status.icon} {status.label}
                     </span>
-                  ) : (
-                    <span className="px-3 py-1 bg-yellow-100 text-yellow-800 rounded-full text-sm">
-                      Pending
-                    </span>
-                  )}
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
         
         <p className="mt-4 text-sm text-gray-500">

@@ -15,6 +15,7 @@ export default function CourseDetail() {
   const [course, setCourse] = useState(null);
   const [lessons, setLessons] = useState([]);
   const [assignments, setAssignments] = useState([]);
+  const [submissions, setSubmissions] = useState([]);
   const [quizzes, setQuizzes] = useState([]);
   const [progress, setProgress] = useState([]);
   const [activeTab, setActiveTab] = useState('lessons');
@@ -42,13 +43,21 @@ export default function CourseDetail() {
       setAssignments(assignmentsRes.data);
       setQuizzes(quizzesRes.data);
 
-      // Load progress for students
+      // Load progress and submissions for students
       if (isStudent) {
         try {
           const progressRes = await api.get(`/lessons/progress/course/${courseId}`);
           setProgress(progressRes.data);
         } catch (e) {
           // Progress might not exist yet
+        }
+        
+        // Load submissions for this course
+        try {
+          const submissionsRes = await api.get(`/assignments/course/${courseId}/my-submissions`);
+          setSubmissions(submissionsRes.data);
+        } catch (e) {
+          // Submissions might not exist yet
         }
       }
     } catch (error) {
@@ -65,6 +74,35 @@ export default function CourseDetail() {
   const isLessonCompleted = (lessonId) => {
     const p = getLessonProgress(lessonId);
     return p?.completed || false;
+  };
+  
+  const getSubmissionForAssignment = (assignmentId) => {
+    return submissions.find(s => s.assignment_id === assignmentId);
+  };
+  
+  const getSubmissionStatus = (assignment) => {
+    const submission = getSubmissionForAssignment(assignment.id);
+    if (!submission) {
+      // Check if overdue
+      if (assignment.due_date && new Date(assignment.due_date) < new Date()) {
+        return { status: 'overdue', label: 'Overdue', color: 'red' };
+      }
+      return { status: 'not_submitted', label: 'Not Submitted', color: 'yellow' };
+    }
+    
+    switch (submission.status) {
+      case 'graded':
+        return { 
+          status: 'graded', 
+          label: `Graded: ${submission.score}/${assignment.max_score || 100}`, 
+          color: submission.score >= (assignment.max_score || 100) * 0.6 ? 'green' : 'orange',
+          submission 
+        };
+      case 'submitted':
+        return { status: 'submitted', label: 'Submitted - Pending Grade', color: 'blue', submission };
+      default:
+        return { status: submission.status, label: submission.status, color: 'gray', submission };
+    }
   };
 
   const tabs = [
@@ -235,45 +273,102 @@ export default function CourseDetail() {
                 <p className="text-gray-600">No assignments available yet.</p>
               </div>
             ) : (
-              assignments.map(assignment => (
-                <div key={assignment.id} className="card hover:shadow-lg transition-shadow">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <h3 className="text-lg font-semibold mb-1">{assignment.title}</h3>
-                      <p className="text-gray-600 text-sm mb-3">{assignment.description}</p>
+              assignments.map(assignment => {
+                const statusInfo = getSubmissionStatus(assignment);
+                return (
+                  <div key={assignment.id} className="card hover:shadow-lg transition-shadow">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3 mb-1">
+                          <h3 className="text-lg font-semibold">{assignment.title}</h3>
+                          {isStudent && (
+                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                              statusInfo.color === 'green' ? 'bg-green-100 text-green-800' :
+                              statusInfo.color === 'blue' ? 'bg-blue-100 text-blue-800' :
+                              statusInfo.color === 'yellow' ? 'bg-yellow-100 text-yellow-800' :
+                              statusInfo.color === 'orange' ? 'bg-orange-100 text-orange-800' :
+                              statusInfo.color === 'red' ? 'bg-red-100 text-red-800' :
+                              'bg-gray-100 text-gray-800'
+                            }`}>
+                              {statusInfo.label}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-gray-600 text-sm mb-3">{assignment.description}</p>
+                        
+                        <div className="flex flex-wrap items-center gap-4 text-sm">
+                          {assignment.due_date && (
+                            <span className={`flex items-center ${
+                              new Date(assignment.due_date) < new Date() 
+                                ? 'text-red-600' 
+                                : 'text-gray-500'
+                            }`}>
+                              <Clock className="h-4 w-4 mr-1" />
+                              Due: {new Date(assignment.due_date).toLocaleDateString()} {new Date(assignment.due_date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                            </span>
+                          )}
+                          <span className="text-gray-500">
+                            Max Score: {assignment.max_score || 100}
+                          </span>
+                          {assignment.allow_late_submission && (
+                            <span className="text-orange-600 text-xs">
+                              Late submissions allowed
+                            </span>
+                          )}
+                          {statusInfo.submission?.is_late && (
+                            <span className="text-orange-600 text-xs">
+                              Submitted late
+                            </span>
+                          )}
+                          {statusInfo.submission?.submitted_at && (
+                            <span className="text-gray-500 text-xs">
+                              Submitted: {new Date(statusInfo.submission.submitted_at).toLocaleDateString()} {new Date(statusInfo.submission.submitted_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                            </span>
+                          )}
+                          {statusInfo.submission?.graded_at && (
+                            <span className="text-gray-500 text-xs">
+                              Graded: {new Date(statusInfo.submission.graded_at).toLocaleDateString()}
+                            </span>
+                          )}
+                          {assignment.audio_url && (
+                            <span className="flex items-center text-primary-600">
+                              <Volume2 className="h-4 w-4 mr-1" />
+                              TTS Available
+                            </span>
+                          )}
+                        </div>
+                      </div>
                       
-                      <div className="flex items-center gap-4 text-sm">
-                        {assignment.due_date && (
-                          <span className={`flex items-center ${
-                            new Date(assignment.due_date) < new Date() 
-                              ? 'text-red-600' 
-                              : 'text-gray-500'
-                          }`}>
-                            <Clock className="h-4 w-4 mr-1" />
-                            Due: {new Date(assignment.due_date).toLocaleDateString()}
-                          </span>
+                      <div className="flex flex-col items-end gap-2">
+                        {isStudent && statusInfo.status === 'graded' && (
+                          <div className="text-right">
+                            <span className={`text-lg font-bold ${
+                              statusInfo.submission.score >= (assignment.max_score || 100) * 0.6 
+                                ? 'text-green-600' 
+                                : 'text-orange-600'
+                            }`}>
+                              {statusInfo.submission.score}/{assignment.max_score || 100}
+                            </span>
+                            <p className="text-xs text-gray-500">
+                              {Math.round((statusInfo.submission.score / (assignment.max_score || 100)) * 100)}%
+                            </p>
+                          </div>
                         )}
-                        <span className="text-gray-500">
-                          Max Score: {assignment.max_score || 100}
-                        </span>
-                        {assignment.audio_url && (
-                          <span className="flex items-center text-primary-600">
-                            <Volume2 className="h-4 w-4 mr-1" />
-                            TTS Available
-                          </span>
-                        )}
+                        <Link
+                          to={`${basePath}/courses/${courseId}/assignments/${assignment.id}`}
+                          className="btn btn-primary"
+                        >
+                          {isStudent 
+                            ? (statusInfo.status === 'not_submitted' || statusInfo.status === 'overdue' 
+                                ? 'Submit' 
+                                : 'View Submission') 
+                            : 'View'}
+                        </Link>
                       </div>
                     </div>
-                    
-                    <Link
-                      to={`${basePath}/courses/${courseId}/assignments/${assignment.id}`}
-                      className="btn btn-primary"
-                    >
-                      {isStudent ? 'View / Submit' : 'View'}
-                    </Link>
                   </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         )}

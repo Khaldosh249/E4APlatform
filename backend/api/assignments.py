@@ -9,12 +9,34 @@ from db.assignments import Assignment, Submission, SubmissionStatus
 from db.feedback import Feedback, FeedbackType
 from api.schemas.assignments import (
     AssignmentCreate, AssignmentUpdate, AssignmentResponse,
-    SubmissionCreate, SubmissionGrade, SubmissionResponse
+    SubmissionCreate, SubmissionGrade, SubmissionResponse, SubmissionUpdate
 )
 from api.dependencies import get_current_user, get_teacher_user
 from core.tts import generate_tts_audio
 
 router = APIRouter(prefix="/assignments", tags=["Assignments"])
+
+
+@router.get("/course/{course_id}/my-submissions", response_model=List[SubmissionResponse])
+def get_my_course_submissions(
+    course_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get all submissions by the current student for a course"""
+    # Get all assignment IDs for this course
+    assignment_ids = db.query(Assignment.id).filter(
+        Assignment.course_id == course_id
+    ).all()
+    assignment_ids = [a[0] for a in assignment_ids]
+    
+    # Get all submissions for these assignments by this student
+    submissions = db.query(Submission).filter(
+        Submission.assignment_id.in_(assignment_ids),
+        Submission.student_id == current_user.id
+    ).all()
+    
+    return submissions
 
 
 @router.get("/course/{course_id}", response_model=List[AssignmentResponse])
@@ -215,6 +237,64 @@ def submit_assignment(
     )
     
     db.add(submission)
+    db.commit()
+    db.refresh(submission)
+    
+    return submission
+
+
+# Update submission
+@router.post("/submit/{assignment_id}", response_model=SubmissionResponse)
+def update_submission(
+    assignment_id: int,
+    submission_data: SubmissionUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Update an existing assignment submission (Student only)"""
+    if current_user.role != UserRole.STUDENT:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only students can update submissions"
+        )
+    
+    submission = db.query(Submission).filter(
+        Submission.assignment_id == assignment_id,
+        Submission.student_id == current_user.id
+    ).first()
+    
+    if not submission:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Submission not found"
+        )
+    
+    assignment = db.query(Assignment).filter(
+        Assignment.id == assignment_id
+    ).first()
+    
+    if not assignment:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Assignment not found"
+        )
+    
+    # Check if late
+    is_late = False
+    if assignment.due_date and datetime.now() > assignment.due_date:
+        if not assignment.allow_late_submission:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Assignment deadline has passed"
+            )
+        is_late = True
+    
+    # Update submission
+    submission.text_answer = submission_data.text_answer
+    submission.is_late = is_late
+    submission.status = SubmissionStatus.SUBMITTED
+    submission.submitted_at = datetime.now()
+    
     db.commit()
     db.refresh(submission)
     

@@ -1133,6 +1133,11 @@ async def execute_function(
                     Submission.assignment_id == assignment.id
                 ).first()
                 
+                # Determine submission status
+                submission_status = "not_submitted"
+                if submission:
+                    submission_status = submission.status.value if hasattr(submission.status, 'value') else str(submission.status)
+                
                 assignment_data = {
                     "number": len(all_assignments) + 1,
                     "id": assignment.id,
@@ -1142,7 +1147,11 @@ async def execute_function(
                     "due_date": assignment.due_date.isoformat() if assignment.due_date else None,
                     "max_score": assignment.max_score,
                     "submitted": submission is not None,
-                    "grade": submission.score if submission else None
+                    "status": submission_status,
+                    "score": submission.score if submission else None,
+                    "is_late": submission.is_late if submission else False,
+                    "submitted_at": submission.submitted_at.isoformat() if submission and submission.submitted_at else None,
+                    "graded_at": submission.graded_at.isoformat() if submission and submission.graded_at else None
                 }
                 all_assignments.append(assignment_data)
         
@@ -1192,6 +1201,11 @@ async def execute_function(
         
         session_manager.update_session(user_id, current_assignment_id=assignment_id)
         
+        # Determine submission status
+        submission_status = "not_submitted"
+        if submission:
+            submission_status = submission.status.value if hasattr(submission.status, 'value') else str(submission.status)
+        
         await send_context_update({
             "action": "show_assignment",
             "assignment": {
@@ -1199,23 +1213,40 @@ async def execute_function(
                 "title": assignment.title,
                 "description": assignment.description,
                 "due_date": assignment.due_date.isoformat() if assignment.due_date else None,
-                "max_score": assignment.max_score
+                "max_score": assignment.max_score,
+                "allow_late_submission": assignment.allow_late_submission
             },
             "submission": {
                 "submitted": submission is not None,
-                "grade": submission.score if submission else None
+                "status": submission_status,
+                "score": submission.score if submission else None,
+                "is_late": submission.is_late if submission else False,
+                "submitted_at": submission.submitted_at.isoformat() if submission and submission.submitted_at else None,
+                "graded_at": submission.graded_at.isoformat() if submission and submission.graded_at else None
             } if submission else None
         })
         
         status = ""
         if submission:
             status = f"You already submitted this assignment"
-            if submission.score is not None:
-                status += f" and received a grade of {submission.score} out of {assignment.max_score}."
+            if submission.is_late:
+                status += " (late submission)"
+            if submission.status.value == 'graded' if hasattr(submission.status, 'value') else submission.status == 'graded':
+                percentage = round((submission.score / assignment.max_score) * 100) if assignment.max_score else 0
+                status += f" and received a grade of {submission.score} out of {assignment.max_score}, which is {percentage} percent."
             else:
                 status += " and it's awaiting grading."
+            if submission.submitted_at:
+                status += f" Submitted on {submission.submitted_at.strftime('%B %d, %Y at %I:%M %p')}."
         else:
-            status = "You haven't submitted this assignment yet. Say 'start assignment' to begin."
+            is_overdue = assignment.due_date and datetime.now() > assignment.due_date
+            if is_overdue:
+                if assignment.allow_late_submission:
+                    status = "This assignment is past due, but late submissions are allowed. Say 'start assignment' to begin."
+                else:
+                    status = "This assignment is past due and no longer accepts submissions."
+            else:
+                status = "You haven't submitted this assignment yet. Say 'start assignment' to begin."
         
         return {
             "success": True,
@@ -1288,8 +1319,8 @@ async def execute_function(
         submission = Submission(
             student_id=user_id,
             assignment_id=assignment_id,
-            content=content,
-            submitted_at=datetime.utcnow()
+            text_answer=content,
+            submitted_at=datetime.now()
         )
         db.add(submission)
         db.commit()

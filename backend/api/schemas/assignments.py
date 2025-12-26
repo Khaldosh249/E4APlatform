@@ -44,6 +44,13 @@ class SubmissionCreate(BaseModel):
     text_answer: Optional[str] = None
 
 
+class SubmissionUpdate(BaseModel):
+    assignment_id: int
+    text_answer: Optional[str] = None
+    voice_answer_url: Optional[str] = None
+    attachment_url: Optional[str] = None
+
+
 class SubmissionGrade(BaseModel):
     score: int
     feedback_text: Optional[str] = None
