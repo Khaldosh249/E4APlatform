@@ -310,9 +310,14 @@ const VoiceAssistantPage = () => {
       // If lesson has audio URL, store it and wait for AI to finish speaking
       // Then user will press Space to start the audio
       if (data.has_audio && data.lesson?.audio_url) {
+        // Build full audio URL using API base URL
+        const audioUrl = data.lesson.audio_url.startsWith('http') 
+          ? data.lesson.audio_url 
+          : `${import.meta.env.VITE_API_URL}${data.lesson.audio_url}`;
+        
         // Store the audio URL - will play after AI finishes and user presses Space
-        setPendingLessonAudio(data.lesson.audio_url);
-        pendingLessonAudioRef.current = data.lesson.audio_url; // Also update ref for message handler
+        setPendingLessonAudio(audioUrl);
+        pendingLessonAudioRef.current = audioUrl; // Also update ref for message handler
         
         // Stop any current listening using ref
         if (isListeningRef.current) {
